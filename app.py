@@ -1,12 +1,19 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
+# ====================================================
+# CONFIGURAÇÃO
+# ====================================================
+
 st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# Esconde tudo do Streamlit
+# ====================================================
+# CSS FULLSCREEN
+# ====================================================
+
 st.markdown("""
 <style>
 
@@ -38,34 +45,66 @@ footer {
     display: none;
 }
 
-section.main > div {
-    padding-top: 0rem;
-    padding-bottom: 0rem;
-}
-
 .block-container {
     padding: 0rem !important;
     margin: 0rem !important;
     max-width: 100% !important;
 }
 
+section.main > div {
+    padding: 0rem !important;
+}
+
 iframe {
-    border: none;
+    border: none !important;
+    width: 100% !important;
+}
+
+.stApp {
+    background: #000000;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
-# PLANILHA
-components.iframe(
-    src="https://docs.google.com/spreadsheets/d/12MFBwvjJmwvtJj2I3GzqWluh8NpYrFYK7oXQFHNryqU/edit?usp=sharing",
-    height=900,
-    scrolling=True
+# ====================================================
+# PLANILHA (TELA 1)
+# ====================================================
+
+components.html(
+    """
+    <iframe
+        src="https://docs.google.com/spreadsheets/d/12MFBwvjJmwvtJj2I3GzqWluh8NpYrFYK7oXQFHNryqU/edit?usp=sharing"
+        style="
+            width:100vw;
+            height:100vh;
+            border:none;
+            margin:0;
+            padding:0;
+        "
+        allowfullscreen>
+    </iframe>
+    """,
+    height=1000
 )
 
-# LOOKER
-components.iframe(
-    src="https://datastudio.google.com/embed/reporting/31bc0f2d-27e1-466f-8759-8d73ff05c5cf/page/aoNyF",
-    height=2000,
-    scrolling=True
+# ====================================================
+# LOOKER (TELA 2)
+# ====================================================
+
+components.html(
+    """
+    <iframe
+        src="https://lookerstudio.google.com/embed/reporting/31bc0f2d-27e1-466f-8759-8d73ff05c5cf/page/aoNyF"
+        style="
+            width:100vw;
+            height:100vh;
+            border:none;
+            margin:0;
+            padding:0;
+        "
+        allowfullscreen>
+    </iframe>
+    """,
+    height=1000
 )
