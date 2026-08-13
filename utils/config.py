@@ -17,10 +17,24 @@ class Config:
 
 def get_config() -> Config:
     try:
-        secrets = st.secrets
-        sid = secrets.get("SPREADSHEET_ID") if isinstance(secrets, dict) or hasattr(secrets, 'get') else None
-        clinic = secrets.get("CLINIC_NAME", "Clínica")
-        resp = secrets.get("RESPONSIBLE_EMAIL", "")
+        # Prefer environment variables (useful for CI / containers), then Streamlit secrets
+        import os
+        sid = os.environ.get('SPREADSHEET_ID') or os.environ.get('SPREADSHEET_NAME')
+        clinic = os.environ.get('CLINIC_NAME')
+        resp = os.environ.get('RESPONSIBLE_EMAIL')
+
+        secrets = None
+        try:
+            secrets = st.secrets
+        except Exception:
+            secrets = None
+
+        if not sid and secrets:
+            sid = secrets.get("SPREADSHEET_ID") if isinstance(secrets, dict) or hasattr(secrets, 'get') else None
+        if not clinic and secrets:
+            clinic = secrets.get("CLINIC_NAME", "Clínica")
+        if not resp and secrets:
+            resp = secrets.get("RESPONSIBLE_EMAIL", "")
 
         # Fallback: if running outside streamlit runtime, read .streamlit/secrets.toml
         if not sid:
@@ -36,7 +50,7 @@ def get_config() -> Config:
                 if os.path.exists(secrets_path):
                     with open(secrets_path, 'rb') as f:
                         data = toml.load(f)
-                    sid = data.get('SPREADSHEET_ID') or data.get('SPREADSHEET_NAME')
+                    sid = sid or data.get('SPREADSHEET_ID') or data.get('SPREADSHEET_NAME')
                     clinic = clinic or data.get('CLINIC_NAME')
                     resp = resp or data.get('RESPONSIBLE_EMAIL')
             except Exception:

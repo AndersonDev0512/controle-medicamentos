@@ -25,35 +25,93 @@ pages = [
 
 pg = st.navigation(pages, position="hidden")
 
-with st.sidebar:
-    try:
-        st.image("assets/logo.png", width=160)
-    except Exception:
-        st.markdown(
-            '<div style="text-align:center;padding:.8rem 0 .4rem;">'
-            '<span style="font-size:2.2rem;">💊</span>'
-            '<div style="font-size:1rem;font-weight:700;margin-top:.3rem;color:#f8fafc;">'
-            'Controle de<br>Medicamentos</div></div>',
-            unsafe_allow_html=True,
-        )
+# Top horizontal navigation bar using page links
+nav_items = [
+    ("pages/home.py", "🏠 Página Inicial"),
+    ("pages/estoque.py", "📦 Estoque"),
+    ("pages/cadastrar_medicamento.py", "➕ Cadastrar Medicamento"),
+    ("pages/registrar_aplicacao.py", "💉 Registrar Aplicação"),
+    ("pages/historico.py", "📜 Histórico"),
+    ("pages/alertas.py", "⚠️ Alertas"),
+    ("pages/configuracoes.py", "⚙️ Configurações"),
+]
 
-    st.markdown("---")
+# CSS for top nav (fixed) and spacing for main content
+st.markdown(
+    """
+    <style>
+    .top-nav {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 9999;
+        background: linear-gradient(90deg, #071228, #0b2333);
+        padding: 8px 20px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+    .top-nav .logo { display:flex; align-items:center; gap:8px; color:#f8fafc; font-weight:700; }
+    .top-nav .nav-link { color:#cbd5e1; padding:8px 12px; border-radius:6px; text-decoration:none; }
+    .top-nav .nav-link:hover { background: rgba(255,255,255,0.03); color:#fff; }
+    .content-offset { padding-top: 68px; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-    st.page_link("pages/home.py",                  label="🏠  Página Inicial")
-    st.page_link("pages/estoque.py",               label="📦  Estoque")
-    st.page_link("pages/cadastrar_medicamento.py", label="➕  Cadastrar Medicamento")
-    st.page_link("pages/registrar_aplicacao.py",   label="💉  Registrar Aplicação")
-    st.page_link("pages/historico.py",             label="📜  Histórico")
-    st.page_link("pages/alertas.py",               label="⚠️  Alertas")
-    st.page_link("pages/configuracoes.py",         label="⚙️  Configurações")
+# Render top nav using HTML anchors that will be enhanced with streamlit's page links below
+links_html = ['<div class="top-nav">']
+try:
+    # try to show logo image
+    from pathlib import Path
+    if Path('assets/logo.png').exists():
+        links_html.append('<div class="logo"><img src="assets/logo.png" height="36"/></div>')
+    else:
+        links_html.append('<div class="logo">💊 Controle de Medicamentos</div>')
+except Exception:
+    links_html.append('<div class="logo">💊 Controle de Medicamentos</div>')
 
-    st.markdown("---")
-    st.markdown(
-        '<p style="color:#475569;font-size:.73rem;text-align:center;margin:0;">'
-        'v1.0.0 · Google Sheets</p>',
-        unsafe_allow_html=True,
-    )
+for path, label in nav_items:
+    # make anchor navigate by setting query param ?page=...
+    links_html.append(f'<a class="nav-link" href="?page={path}" data-page="{path}">{label}</a>')
 
+links_html.append('</div>')
+st.markdown("".join(links_html), unsafe_allow_html=True)
+
+# JavaScript to persist active page highlight and set active on load
+st.markdown(
+    """
+    <script>
+    (function(){
+        function setActive(page){
+            document.querySelectorAll('.top-nav .nav-link').forEach(function(a){
+                a.classList.toggle('active', a.getAttribute('data-page') === page);
+            });
+        }
+
+        // On click, remember clicked page in localStorage
+        document.querySelectorAll('.top-nav .nav-link').forEach(function(a){
+            a.addEventListener('click', function(){
+                try{ localStorage.setItem('cm_active_page', a.getAttribute('data-page')); }catch(e){}
+            });
+        });
+
+        // On load, determine active page from query string or localStorage
+        var params = new URLSearchParams(window.location.search);
+        var p = params.get('page') || (localStorage.getItem('cm_active_page')) || '';
+        if(p){ setActive(p); }
+    })();
+    </script>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown('<div class="content-offset"></div>', unsafe_allow_html=True)
+
+# run navigation after rendering nav
 pg.run()
 
 # ====================================================

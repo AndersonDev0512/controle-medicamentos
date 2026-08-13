@@ -34,11 +34,32 @@ if _GSPREAD_AVAILABLE:
     @st.cache_resource
     def _get_client() -> gspread.Client:
         try:
-            raw = st.secrets.get("gcp_service_account") if hasattr(st, 'secrets') else None
+            import os
+            raw = None
+
+            # 1) Try Streamlit secrets first (preferred on Streamlit Cloud)
+            try:
+                raw = st.secrets.get("gcp_service_account") if hasattr(st, 'secrets') else None
+            except Exception:
+                raw = None
+
+            # 2) Try environment variables (useful for CI / deployment platforms)
             if not raw:
-                # Try reading .streamlit/secrets.toml as a fallback
+                raw = os.environ.get('GCP_SERVICE_ACCOUNT') or os.environ.get('GCP_SERVICE_ACCOUNT_JSON')
+
+            # 3) Try GOOGLE_APPLICATION_CREDENTIALS path
+            if not raw:
+                gac_path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
+                if gac_path and os.path.exists(gac_path):
+                    try:
+                        with open(gac_path, 'r', encoding='utf-8') as f:
+                            raw = f.read()
+                    except Exception:
+                        raw = None
+
+            # 4) Fallback: try to read local .streamlit/secrets.toml (developer convenience)
+            if not raw:
                 try:
-                    import os
                     try:
                         import tomllib as toml
                     except Exception:
@@ -53,7 +74,8 @@ if _GSPREAD_AVAILABLE:
                     raw = None
 
             if not raw:
-                raise RuntimeError('gcp_service_account não encontrado em st.secrets ou .streamlit/secrets.toml')
+                st.error('gcp_service_account não encontrado. Configure o secret `gcp_service_account` no Streamlit Cloud, ou defina a variável de ambiente `GCP_SERVICE_ACCOUNT`/`GCP_SERVICE_ACCOUNT_JSON`, ou `GOOGLE_APPLICATION_CREDENTIALS` apontando para o arquivo JSON.')
+                raise RuntimeError('gcp_service_account não encontrado em st.secrets, variáveis de ambiente ou .streamlit/secrets.toml')
 
             info = sanitize_service_account(raw)
             creds = Credentials.from_service_account_info(info, scopes=_SCOPES)
