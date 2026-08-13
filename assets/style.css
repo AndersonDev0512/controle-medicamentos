@@ -1,0 +1,359 @@
+/* ============================================================
+   CONTROLE DE MEDICAMENTOS — THEME
+   ============================================================ */
+
+:root {
+    --bg-primary:   #0f172a;
+    --bg-sidebar:   #111827;
+    --bg-card:      #1e293b;
+    --bg-card-alt:  #243044;
+    --color-primary:       #2563eb;
+    --color-primary-hover: #1d4ed8;
+    --color-text:          #f8fafc;
+    --color-muted:         #94a3b8;
+    --color-border:        #334155;
+    --color-success:       #22c55e;
+    --color-warning:       #f59e0b;
+    --color-danger:        #ef4444;
+    --color-orange:        #f97316;
+    --color-purple:        #8b5cf6;
+    --radius:   10px;
+    --shadow:   0 4px 6px -1px rgba(0,0,0,.35), 0 2px 4px -1px rgba(0,0,0,.25);
+}
+
+/* ── HIDE STREAMLIT CHROME ───────────────────────────────── */
+#MainMenu, header, footer,
+[data-testid="stToolbar"],
+[data-testid="stDecoration"],
+[data-testid="stStatusWidget"],
+[data-testid="stHeader"] {
+    display: none !important;
+}
+
+/* ── GLOBAL BACKGROUND ───────────────────────────────────── */
+.stApp {
+    background-color: var(--bg-primary) !important;
+}
+
+.main .block-container {
+    padding: 1.5rem 2rem 2rem !important;
+    max-width: 100% !important;
+}
+
+/* ── SIDEBAR ─────────────────────────────────────────────── */
+[data-testid="stSidebar"] {
+    background-color: var(--bg-sidebar) !important;
+    border-right: 1px solid var(--color-border) !important;
+}
+
+[data-testid="stSidebar"] > div:first-child {
+    padding: 1.25rem 1rem !important;
+}
+
+[data-testid="stSidebar"] hr {
+    border-color: var(--color-border) !important;
+    margin: 0.6rem 0 !important;
+}
+
+/* page_link items */
+[data-testid="stPageLink"] {
+    border-radius: 8px !important;
+    margin: 1px 0 !important;
+    display: block !important;
+    transition: background 0.15s !important;
+}
+
+[data-testid="stPageLink"]:hover {
+    background: rgba(37,99,235,.15) !important;
+}
+
+[data-testid="stPageLink"][aria-current="page"],
+[data-testid="stPageLink"].active {
+    background: rgba(37,99,235,.22) !important;
+    border-left: 3px solid var(--color-primary) !important;
+}
+
+[data-testid="stPageLink"] p,
+[data-testid="stPageLink"] span {
+    color: var(--color-text) !important;
+    font-size: 0.88rem !important;
+}
+
+/* ── TYPOGRAPHY ──────────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6,
+p, span, div, label, li {
+    color: var(--color-text) !important;
+}
+
+.page-title {
+    font-size: 1.55rem !important;
+    font-weight: 700 !important;
+    color: var(--color-text) !important;
+    margin-bottom: 1.4rem !important;
+    padding-bottom: 0.5rem !important;
+    border-bottom: 2px solid var(--color-primary) !important;
+}
+
+.section-header {
+    font-size: 1rem !important;
+    font-weight: 700 !important;
+    color: var(--color-text) !important;
+    margin: 1.2rem 0 0.75rem !important;
+    padding-bottom: 0.35rem !important;
+    border-bottom: 1px solid var(--color-border) !important;
+}
+
+/* ── METRIC CARDS ────────────────────────────────────────── */
+.metric-card {
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.3rem;
+    border-left: 4px solid var(--color-primary);
+    box-shadow: var(--shadow);
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    margin-bottom: 0.5rem;
+    transition: transform 0.18s, box-shadow 0.18s;
+}
+
+.metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px -3px rgba(0,0,0,.45);
+}
+
+.metric-icon {
+    font-size: 1.9rem;
+    min-width: 2.2rem;
+    text-align: center;
+}
+
+.metric-content { flex: 1; }
+
+.metric-value {
+    font-size: 1.85rem;
+    font-weight: 800;
+    color: var(--color-text) !important;
+    line-height: 1.1;
+}
+
+.metric-label {
+    font-size: 0.72rem;
+    color: var(--color-muted) !important;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    font-weight: 600;
+    margin-top: 2px;
+}
+
+/* Streamlit native metric widget */
+[data-testid="stMetric"] {
+    background: var(--bg-card) !important;
+    border-radius: var(--radius) !important;
+    padding: 1rem 1.2rem !important;
+    border: 1px solid var(--color-border) !important;
+    box-shadow: var(--shadow) !important;
+}
+
+[data-testid="stMetricValue"] { color: var(--color-text) !important; }
+[data-testid="stMetricLabel"] { color: var(--color-muted) !important; }
+
+/* ── TABLES ──────────────────────────────────────────────── */
+[data-testid="stDataFrame"] {
+    border: 1px solid var(--color-border) !important;
+    border-radius: var(--radius) !important;
+    overflow: hidden !important;
+}
+
+/* ── FORMS ───────────────────────────────────────────────── */
+.stTextInput > div > div > input,
+.stNumberInput > div > div > input,
+.stTextArea > div > div > textarea,
+.stDateInput > div > div > input {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--color-border) !important;
+    border-radius: 8px !important;
+    color: var(--color-text) !important;
+}
+
+.stTextInput > div > div > input:focus,
+.stNumberInput > div > div > input:focus,
+.stTextArea > div > div > textarea:focus {
+    border-color: var(--color-primary) !important;
+    box-shadow: 0 0 0 2px rgba(37,99,235,.22) !important;
+    outline: none !important;
+}
+
+.stTextInput label,
+.stNumberInput label,
+.stTextArea label,
+.stSelectbox label,
+.stDateInput label,
+.stMultiSelect label {
+    color: var(--color-muted) !important;
+    font-size: 0.8rem !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: .05em !important;
+}
+
+/* Selectbox */
+.stSelectbox > div > div {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--color-border) !important;
+    border-radius: 8px !important;
+    color: var(--color-text) !important;
+}
+
+/* ── BUTTONS ─────────────────────────────────────────────── */
+.stButton > button {
+    background: var(--color-primary) !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 0.45rem 1.4rem !important;
+    font-weight: 600 !important;
+    font-size: 0.88rem !important;
+    transition: background 0.15s, transform 0.1s !important;
+}
+
+.stButton > button:hover {
+    background: var(--color-primary-hover) !important;
+    transform: translateY(-1px) !important;
+}
+
+.stButton > button:active {
+    transform: translateY(0) !important;
+}
+
+/* Form submit button */
+[data-testid="stFormSubmitButton"] > button {
+    background: var(--color-primary) !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight: 700 !important;
+    transition: background 0.15s, transform 0.1s !important;
+}
+
+[data-testid="stFormSubmitButton"] > button:hover {
+    background: var(--color-primary-hover) !important;
+}
+
+/* Download button */
+[data-testid="stDownloadButton"] > button {
+    background: var(--bg-card) !important;
+    color: var(--color-text) !important;
+    border: 1px solid var(--color-border) !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+}
+
+[data-testid="stDownloadButton"] > button:hover {
+    border-color: var(--color-primary) !important;
+    color: var(--color-primary) !important;
+}
+
+/* ── ALERT MESSAGES ──────────────────────────────────────── */
+[data-testid="stAlert"] {
+    border-radius: 8px !important;
+}
+
+/* ── TABS ────────────────────────────────────────────────── */
+.stTabs [data-baseweb="tab-list"] {
+    background: var(--bg-card) !important;
+    border-radius: 8px 8px 0 0 !important;
+    gap: 4px !important;
+    padding: 4px !important;
+    border-bottom: 1px solid var(--color-border) !important;
+}
+
+.stTabs [data-baseweb="tab"] {
+    background: transparent !important;
+    border-radius: 6px !important;
+    color: var(--color-muted) !important;
+    font-weight: 600 !important;
+    padding: 6px 18px !important;
+    border: none !important;
+    transition: background 0.15s !important;
+}
+
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+    background: var(--color-primary) !important;
+    color: #fff !important;
+}
+
+.stTabs [data-baseweb="tab-panel"] {
+    background: var(--bg-card) !important;
+    border-radius: 0 0 8px 8px !important;
+    padding: 1.5rem !important;
+    border: 1px solid var(--color-border) !important;
+    border-top: none !important;
+}
+
+/* ── PLOTLY CHARTS ───────────────────────────────────────── */
+.stPlotlyChart {
+    background: var(--bg-card) !important;
+    border-radius: var(--radius) !important;
+    padding: 0.5rem !important;
+    border: 1px solid var(--color-border) !important;
+    box-shadow: var(--shadow) !important;
+}
+
+/* ── ALERT CARDS (custom HTML) ───────────────────────────── */
+.alert-card {
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    padding: 0.9rem 1.3rem;
+    margin-bottom: 0.65rem;
+    border-left: 4px solid var(--color-warning);
+    box-shadow: var(--shadow);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+/* ── STATUS BADGE (custom HTML) ──────────────────────────── */
+.status-badge {
+    display: inline-block;
+    padding: 3px 11px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+}
+
+/* ── EXPANDER ────────────────────────────────────────────── */
+[data-testid="stExpander"] {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--color-border) !important;
+    border-radius: var(--radius) !important;
+}
+
+/* ── SPINNER ─────────────────────────────────────────────── */
+[data-testid="stSpinner"] > div {
+    color: var(--color-primary) !important;
+}
+
+/* ── SCROLLBAR ───────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-primary); }
+
+/* ── CODE BLOCK ──────────────────────────────────────────── */
+.stCodeBlock, pre, code {
+    background: #0d1526 !important;
+    border: 1px solid var(--color-border) !important;
+    border-radius: 6px !important;
+    color: #e2e8f0 !important;
+}
+
+/* ── RESPONSIVE ──────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .main .block-container { padding: 1rem !important; }
+    .metric-value { font-size: 1.4rem !important; }
+    .page-title { font-size: 1.2rem !important; }
+}
