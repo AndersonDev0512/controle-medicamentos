@@ -1,3 +1,4 @@
+import traceback
 import streamlit as st
 import streamlit.components.v1 as components
 from utils.helpers import load_css
@@ -125,7 +126,15 @@ if _qp_page and _qp_page.endswith('.py'):
     except Exception:
         pass
 
-pg.run()
+try:
+    pg.run()
+except Exception:
+    st.error(
+        "Não foi possível carregar a página. Verifique as configurações do Streamlit Cloud: "
+        "`gcp_service_account`, `SPREADSHEET_ID` e as permissões da planilha."
+    )
+    st.code(traceback.format_exc())
+    st.stop()
 
 # ====================================================
 # CSS FULLSCREEN
