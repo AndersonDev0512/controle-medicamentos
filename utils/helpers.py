@@ -5,7 +5,7 @@ from typing import Optional, Union, Any, Dict
 from collections.abc import Mapping
 from utils.constants import (
     STATUS_VENCIDO, STATUS_ATENCAO, STATUS_PROXIMO, STATUS_OK,
-    CORES_STATUS, DIAS_ATENCAO, DIAS_PROXIMO,
+    CORES_STATUS, DIAS_CRITICO, DIAS_ATENCAO, DIAS_PROXIMO,
 )
 import json
 
@@ -68,6 +68,8 @@ def calcular_status(dias: Optional[int]) -> str:
         return STATUS_OK
     if dias < 0:
         return STATUS_VENCIDO
+    if dias <= DIAS_CRITICO:
+        return STATUS_CRITICO
     if dias <= DIAS_ATENCAO:
         return STATUS_ATENCAO
     if dias <= DIAS_PROXIMO:
@@ -119,6 +121,61 @@ def status_badge(status: str) -> str:
         f'style="background:{color}20;color:{color};border:1px solid {color};">'
         f"{status}</span>"
     )
+
+
+def status_label(status: str) -> str:
+    status = (status or "").strip()
+    mapping = {
+        "Vencido": "⚫ VENCIDO",
+        "Crítico": "🔴 CRÍTICO (até 15 dias)",
+        "Atenção": "🟠 ATENÇÃO (16 a 89 dias)",
+        "Próximo": "🟡 PRÓXIMO (90 a 120 dias)",
+        "OK": "🟢 OK (+120 dias)",
+    }
+    return mapping.get(status, status)
+
+
+def normalize_status(raw: object) -> str:
+    """Normalize a status value coming from the sheet to one of the canonical STATUS_* constants.
+
+    Handles emojis, extra text in parentheses, and common variations.
+    """
+    s = (str(raw) if raw is not None else "").strip()
+    if s == "":
+        return STATUS_OK
+
+    # remove parenthetical content and extra whitespace
+    import re
+
+    s_clean = re.sub(r"\(.*?\)", "", s).strip()
+    s_clean_lower = s_clean.lower()
+
+    # map by keywords or emoji
+    if any(k in s_clean_lower for k in ("venc", "expir", "expired", "expired")) or "⚫" in s_clean:
+        return STATUS_VENCIDO
+    if any(k in s_clean_lower for k in ("crit", "crít", "critico", "crítico")) or "🔴" in s_clean:
+        return STATUS_CRITICO
+    if any(k in s_clean_lower for k in ("aten", "atenção", "attention")) or "🟠" in s_clean or "🔶" in s_clean:
+        return STATUS_ATENCAO
+    if any(k in s_clean_lower for k in ("prox", "próx", "próximo", "next")) or "🟡" in s_clean or "⚠" in s_clean:
+        return STATUS_PROXIMO
+    if any(k in s_clean_lower for k in ("ok", "ok+", "bom", "good")) or "🟢" in s_clean or "✅" in s_clean:
+        return STATUS_OK
+
+    # default: try exact matches against canonical names
+    if s_clean_lower in (STATUS_VENCIDO.lower(), STATUS_CRITICO.lower(), STATUS_ATENCAO.lower(), STATUS_PROXIMO.lower(), STATUS_OK.lower()):
+        # return capitalized canonical form
+        mapping = {
+            STATUS_VENCIDO.lower(): STATUS_VENCIDO,
+            STATUS_CRITICO.lower(): STATUS_CRITICO,
+            STATUS_ATENCAO.lower(): STATUS_ATENCAO,
+            STATUS_PROXIMO.lower(): STATUS_PROXIMO,
+            STATUS_OK.lower(): STATUS_OK,
+        }
+        return mapping[s_clean_lower]
+
+    # fallback: return OK to avoid missing counts
+    return STATUS_OK
 
 
 def check_credentials_configured() -> bool:

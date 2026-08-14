@@ -3,8 +3,8 @@ import pandas as pd
 import streamlit as st
 from datetime import date
 from services.estoque_service import get_estoque
-from services.sheets_service import ler_registro_diario
-from utils.constants import STATUS_VENCIDO, STATUS_ATENCAO, STATUS_PROXIMO, STATUS_OK
+from services.sheets_service import ler_registro_diario, ler_materiais
+from utils.constants import STATUS_VENCIDO, STATUS_CRITICO, STATUS_ATENCAO, STATUS_PROXIMO, STATUS_OK
 from utils.helpers import safe_int
 
 
@@ -14,7 +14,7 @@ def get_kpis() -> dict:
     hoje_str = date.today().strftime("%d/%m/%Y")
 
     if df.empty:
-        return {k: 0 for k in ("total_medicamentos", "quantidade_total", "vencidos", "atencao", "proximos", "ok", "aplicacoes_hoje")}
+        return {k: 0 for k in ("total_medicamentos", "quantidade_total", "vencidos", "critico", "atencao", "proximos", "ok", "aplicacoes_hoje")}
 
     qtd_total = sum(safe_int(v) for v in df["Quantidade"])
     registro = ler_registro_diario()
@@ -23,15 +23,36 @@ def get_kpis() -> dict:
         if not registro.empty
         else 0
     )
-
+    s = df["Status"].astype(str)
     return {
         "total_medicamentos": len(df),
         "quantidade_total": qtd_total,
-        "vencidos": int((df["Status"] == STATUS_VENCIDO).sum()),
-        "atencao": int((df["Status"] == STATUS_ATENCAO).sum()),
-        "proximos": int((df["Status"] == STATUS_PROXIMO).sum()),
-        "ok": int((df["Status"] == STATUS_OK).sum()),
+        "vencidos": int((s == STATUS_VENCIDO).sum()),
+        "critico": int((s == STATUS_CRITICO).sum()),
+        "atencao": int((s == STATUS_ATENCAO).sum()),
+        "proximos": int((s == STATUS_PROXIMO).sum()),
+        "ok": int((s == STATUS_OK).sum()),
         "aplicacoes_hoje": aplicacoes_hoje,
+    }
+
+
+@st.cache_data(ttl=60)
+def get_kpis_materiais() -> dict:
+    df = ler_materiais()
+    if df.empty:
+        return {k: 0 for k in ("total", "vencidos", "critico", "atencao", "proximos", "ok")}
+    from utils.helpers import calcular_dias_para_vencer, calcular_status
+    df2 = df.copy()
+    df2["Dias para Vencer"] = df2["Data de Vencimento"].apply(calcular_dias_para_vencer)
+    df2["Status"] = df2["Dias para Vencer"].apply(calcular_status)
+    s = df2["Status"].astype(str)
+    return {
+        "total": len(df2),
+        "vencidos": int((s == STATUS_VENCIDO).sum()),
+        "critico": int((s == STATUS_CRITICO).sum()),
+        "atencao": int((s == STATUS_ATENCAO).sum()),
+        "proximos": int((s == STATUS_PROXIMO).sum()),
+        "ok": int((s == STATUS_OK).sum()),
     }
 
 

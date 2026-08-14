@@ -63,7 +63,7 @@ with col1:
             textfont=dict(color=_FONT),
         ))
         fig.update_layout(**_layout("Status dos Medicamentos"))
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Sem dados de status.")
 
@@ -81,7 +81,7 @@ with col2:
             textfont=dict(color=_FONT),
         ))
         fig.update_layout(**_layout("Quantidade em Estoque (Top 10)"))
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Sem dados de estoque.")
 
@@ -101,7 +101,7 @@ with col3:
             fillcolor="rgba(34,197,94,0.1)",
         ))
         fig.update_layout(**_layout("Aplicações por Dia"))
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Sem dados de aplicações registradas.")
 
@@ -118,7 +118,7 @@ with col4:
             textfont=dict(color=_FONT),
         ))
         fig.update_layout(**_layout("Top 10 Mais Utilizados"))
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Sem dados de utilização registrados.")
 

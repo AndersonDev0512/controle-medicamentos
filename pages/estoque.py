@@ -3,6 +3,7 @@ import pandas as pd
 from io import BytesIO
 from services.estoque_service import get_estoque
 from utils.constants import STATUS_VENCIDO, STATUS_ATENCAO, STATUS_PROXIMO, STATUS_OK
+from utils.helpers import status_label
 
 st.markdown('<h1 class="page-title">📦 Estoque de Medicamentos</h1>', unsafe_allow_html=True)
 
@@ -32,6 +33,9 @@ if filtro_status != "Todos":
     df_filt = df_filt[df_filt["Status"] == filtro_status]
 df_filt = df_filt.sort_values(ordenar, na_position="last")
 
+display_df = df_filt.copy()
+display_df["Status"] = display_df["Status"].map(lambda s: status_label(str(s)))
+
 st.markdown(
     f'<p style="color:#94a3b8;font-size:0.85rem;margin-bottom:0.5rem;">'
     f'Exibindo <b>{len(df_filt)}</b> de <b>{len(df)}</b> registro(s)</p>',
@@ -40,7 +44,7 @@ st.markdown(
 
 # ── Table ──────────────────────────────────────────────────────────────────────
 colunas = ["Medicamento", "Quantidade", "Unidade de Medida", "Lote", "Data de Vencimento", "Dias para Vencer", "Status"]
-st.dataframe(df_filt[colunas], width='stretch', hide_index=True)
+st.dataframe(display_df[colunas], width='stretch', hide_index=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 

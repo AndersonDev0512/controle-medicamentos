@@ -7,6 +7,7 @@ import streamlit as st
 class Config:
     spreadsheet_id: str = ""
     aba_estoque: str = "Estoque de Medicamentos"
+    aba_materiais: str = "Estoque de Materiais"
     aba_registro: str = "Registro Diário de Medicamentos"
     aba_historico: str = "Histórico de Movimentações"
     clinic_name: str = "Clínica"

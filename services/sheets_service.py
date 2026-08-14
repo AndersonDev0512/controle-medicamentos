@@ -191,6 +191,29 @@ if _GSPREAD_AVAILABLE:
 
 
     @st.cache_data(ttl=30)
+    def ler_materiais() -> pd.DataFrame:
+        config = get_config()
+        try:
+            ws = _get_ws(config.aba_materiais)
+            all_rows = ws.get_all_values()
+            if not all_rows or len(all_rows) < 2:
+                return pd.DataFrame(columns=COLUNAS_ESTOQUE)
+            headers = all_rows[0]
+            data_rows = all_rows[1:]
+            records = []
+            for row in data_rows:
+                if not any(str(c).strip() for c in row):
+                    continue
+                records.append({h: (row[i] if i < len(row) else '') for i, h in enumerate(headers)})
+            if not records:
+                return pd.DataFrame(columns=COLUNAS_ESTOQUE)
+            df = pd.DataFrame(records)
+            return _ensure_cols(df, COLUNAS_ESTOQUE)
+        except Exception:
+            return pd.DataFrame(columns=COLUNAS_ESTOQUE)
+
+
+    @st.cache_data(ttl=30)
     def ler_registro_diario() -> pd.DataFrame:
         config = get_config()
         try:
