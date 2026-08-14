@@ -63,7 +63,7 @@ with col1:
             textfont=dict(color=_FONT),
         ))
         fig.update_layout(**_layout("Status dos Medicamentos"))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     else:
         st.info("Sem dados de status.")
 
@@ -81,7 +81,7 @@ with col2:
             textfont=dict(color=_FONT),
         ))
         fig.update_layout(**_layout("Quantidade em Estoque (Top 10)"))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     else:
         st.info("Sem dados de estoque.")
 
@@ -101,7 +101,7 @@ with col3:
             fillcolor="rgba(34,197,94,0.1)",
         ))
         fig.update_layout(**_layout("Aplicações por Dia"))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     else:
         st.info("Sem dados de aplicações registradas.")
 
@@ -118,6 +118,23 @@ with col4:
             textfont=dict(color=_FONT),
         ))
         fig.update_layout(**_layout("Top 10 Mais Utilizados"))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     else:
         st.info("Sem dados de utilização registrados.")
+
+# Embedded Looker report (centralized in the dashboard page)
+import streamlit.components.v1 as components
+looker_url = "https://lookerstudio.google.com/embed/reporting/31bc0f2d-27e1-466f-8759-8d73ff05c5cf/page/aoNyF"
+
+st.markdown('<hr/>', unsafe_allow_html=True)
+st.markdown('<div class="section-header">Relatório</div>', unsafe_allow_html=True)
+# Provide tabs so user can switch between native charts and embedded report if desired
+tab1, tab2 = st.tabs(["Visualizações Nativas", "Relatório Looker"])
+
+with tab1:
+    st.write('Visualizações do Dashboard estão acima.')
+
+with tab2:
+    components.html(f"""
+        <iframe src="{looker_url}" style="width:100%;height:800px;border:none;" allowfullscreen></iframe>
+    """, height=820)

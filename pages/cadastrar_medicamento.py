@@ -63,12 +63,12 @@ with tab_cad:
     # place the add button to the right
     _, col_add = st.columns([8, 2])
     with col_add:
-        if st.button("➕ Adicionar Medicamento", use_container_width=True):
+        if st.button("➕ Adicionar Medicamento", width='stretch'):
             st.session_state.med_counter += 1
             st.session_state.med_ids.append(st.session_state.med_counter)
             st.rerun()
 
-    if st.button("✅ Cadastrar Medicamento(s)", use_container_width=True, type="primary"):
+    if st.button("✅ Cadastrar Medicamento(s)", width='stretch', type="primary"):
         erros: list[str] = []
         registros: list[dict] = []
         for i, row_id in enumerate(st.session_state.med_ids):
@@ -158,7 +158,7 @@ with tab_edit:
                 e_lote = st.text_input("Lote", value=str(row["Lote"]))
                 e_val = st.date_input("Validade", value=val_atual, format="DD/MM/YYYY")
                 e_obs = st.text_area("Observações", value=str(row.get("Observações", "")), height=100)
-            btn_edit = st.form_submit_button("✅ Salvar Alterações", use_container_width=True)
+            btn_edit = st.form_submit_button("✅ Salvar Alterações", width='stretch')
 
         if btn_edit:
             e_unidade = e_unidade_manual.strip() if e_unidade_sel == "✏️ Inserir Manualmente" else e_unidade_sel
@@ -220,4 +220,4 @@ with tab_cons:
             mask = df_cons["Medicamento"].astype(str).str.contains(pesq, case=False, na=False)
             mask |= df_cons["Lote"].astype(str).str.contains(pesq, case=False, na=False)
             df_cons = df_cons[mask]
-        st.dataframe(df_cons, use_container_width=True, hide_index=True)
+        st.dataframe(df_cons, width='stretch', hide_index=True)

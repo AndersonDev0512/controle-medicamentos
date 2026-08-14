@@ -44,7 +44,7 @@ with st.form("form_aplicacao"):
         value=1,
     )
 
-    btn_registrar = st.form_submit_button("💉 Registrar Aplicação", use_container_width=True)
+    btn_registrar = st.form_submit_button("💉 Registrar Aplicação", width='stretch')
 
 if btn_registrar:
     if lote_sel == "—":

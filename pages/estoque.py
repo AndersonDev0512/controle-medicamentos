@@ -40,7 +40,7 @@ st.markdown(
 
 # ── Table ──────────────────────────────────────────────────────────────────────
 colunas = ["Medicamento", "Quantidade", "Unidade de Medida", "Lote", "Data de Vencimento", "Dias para Vencer", "Status"]
-st.dataframe(df_filt[colunas], use_container_width=True, hide_index=True)
+st.dataframe(df_filt[colunas], width='stretch', hide_index=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -50,7 +50,7 @@ col_e1, col_e2, _ = st.columns([1, 1, 4])
 
 with col_e1:
     csv = df_filt.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-    st.download_button("📄 Exportar CSV", data=csv, file_name="estoque.csv", mime="text/csv", use_container_width=True)
+    st.download_button("📄 Exportar CSV", data=csv, file_name="estoque.csv", mime="text/csv", width='stretch')
 
 with col_e2:
     buf = BytesIO()
@@ -61,5 +61,5 @@ with col_e2:
         data=buf.getvalue(),
         file_name="estoque.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
+        width='stretch',
     )

@@ -47,14 +47,14 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.dataframe(df_filt, use_container_width=True, hide_index=True)
+st.dataframe(df_filt, width='stretch', hide_index=True)
 
 # ── Export ─────────────────────────────────────────────────────────────────────
 st.markdown('<div class="section-header">Exportar</div>', unsafe_allow_html=True)
 col1, col2, _ = st.columns([1, 1, 4])
 with col1:
     csv = df_filt.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-    st.download_button("📄 CSV", data=csv, file_name="historico.csv", mime="text/csv", use_container_width=True)
+    st.download_button("📄 CSV", data=csv, file_name="historico.csv", mime="text/csv", width='stretch')
 with col2:
     buf = BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as w:
@@ -64,5 +64,5 @@ with col2:
         data=buf.getvalue(),
         file_name="historico.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
+        width='stretch',
     )

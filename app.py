@@ -13,11 +13,11 @@ load_css()
 
 pages = [
     st.Page("pages/home.py",                   title="Página Inicial",       icon="🏠", default=True),
+    st.Page("pages/dashboard.py",              title="Dashboard",             icon="📊"),
     st.Page("pages/estoque.py",                title="Estoque",               icon="📦"),
     st.Page("pages/cadastrar_medicamento.py",  title="Cadastrar Medicamento", icon="➕"),
     st.Page("pages/registrar_aplicacao.py",    title="Registrar Aplicação",   icon="💉"),
     st.Page("pages/historico.py",              title="Histórico",             icon="📜"),
-    # Dashboard kept separate; not shown in main navigation
     st.Page("pages/alertas.py",                title="Alertas",               icon="⚠️"),
     st.Page("pages/configuracoes.py",          title="Configurações",         icon="⚙️"),
     st.Page("pages/debug.py",                  title="Debug",                 icon="🐞"),
@@ -28,6 +28,7 @@ pg = st.navigation(pages, position="hidden")
 # Top horizontal navigation bar using page links
 nav_items = [
     ("pages/home.py", "🏠 Página Inicial"),
+    ("pages/dashboard.py", "📊 Dashboard"),
     ("pages/estoque.py", "📦 Estoque"),
     ("pages/cadastrar_medicamento.py", "➕ Cadastrar Medicamento"),
     ("pages/registrar_aplicacao.py", "💉 Registrar Aplicação"),
@@ -46,17 +47,31 @@ st.markdown(
         left: 0;
         right: 0;
         z-index: 9999;
-        background: linear-gradient(90deg, #071228, #0b2333);
-        padding: 8px 20px;
+        background: linear-gradient(90deg, #071228 0%, #052031 50%, #061827 100%);
+        padding: 10px 22px;
         display: flex;
         align-items: center;
-        gap: 12px;
-        border-bottom: 1px solid rgba(255,255,255,0.03);
+        gap: 18px;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+        box-shadow: 0 6px 20px rgba(2,6,23,0.6);
+        overflow-x: auto;
+        white-space: nowrap;
+        border-left: 6px solid #6d28d9; /* purple accent left edge */
     }
-    .top-nav .logo { display:flex; align-items:center; gap:8px; color:#f8fafc; font-weight:700; }
-    .top-nav .nav-link { color:#cbd5e1; padding:8px 12px; border-radius:6px; text-decoration:none; }
-    .top-nav .nav-link:hover { background: rgba(255,255,255,0.03); color:#fff; }
-    .content-offset { padding-top: 68px; }
+    .top-nav::-webkit-scrollbar { height: 8px; }
+    .top-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.04); border-radius: 8px; }
+    .top-nav .logo { display:flex; align-items:center; gap:12px; color:#f8fafc; font-weight:800; font-size:18px; }
+    .top-nav .logo img { border-radius:8px; box-shadow: 0 2px 8px rgba(0,0,0,0.5); }
+    .top-nav .nav-link { color:#e6eef8; padding:10px 14px; border-radius:12px; text-decoration:none; display:inline-flex; align-items:center; gap:10px; font-weight:600; font-size:15px; background: rgba(255,255,255,0.01); }
+    .top-nav .nav-link:hover { background: rgba(255,255,255,0.04); color:#fff; transform: translateY(-1px); transition: all 140ms cubic-bezier(.2,.9,.2,1); }
+    .top-nav .nav-link.active { background: linear-gradient(90deg,#1e3a8a,#3b82f6); color:#fff; box-shadow: 0 8px 22px rgba(59,130,246,0.18); border-radius:14px; }
+    .top-nav .nav-link .icon { font-size:18px; opacity:0.98; }
+    .content-offset { padding-top: 78px; }
+    @media (max-width: 900px){
+        .top-nav { padding: 8px 12px; }
+        .top-nav .nav-link { padding:8px 10px; font-size:14px; }
+        .content-offset { padding-top: 72px; }
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -75,43 +90,41 @@ except Exception:
     links_html.append('<div class="logo">💊 Controle de Medicamentos</div>')
 
 for path, label in nav_items:
-    # make anchor navigate by setting query param ?page=...
-    links_html.append(f'<a class="nav-link" href="?page={path}" data-page="{path}">{label}</a>')
+    links_html.append(f'<a class="nav-link" href="?page={path}" data-page="{path}" target="_self">{label}</a>')
 
+# Render topbar HTML so CSS `.top-nav` applies to anchors
 links_html.append('</div>')
 st.markdown("".join(links_html), unsafe_allow_html=True)
 
-# JavaScript to persist active page highlight and set active on load
+st.markdown('<div class="content-offset"></div>', unsafe_allow_html=True)
+
+# Small client-side script to mark the active nav item based on `?page=` query param
 st.markdown(
     """
     <script>
     (function(){
-        function setActive(page){
-            document.querySelectorAll('.top-nav .nav-link').forEach(function(a){
-                a.classList.toggle('active', a.getAttribute('data-page') === page);
+        try{
+            const params = new URLSearchParams(window.location.search);
+            const p = params.get('page') || localStorage.getItem('cm_active_page') || 'pages/home.py';
+            document.querySelectorAll('.top-nav .nav-link').forEach(a=>{
+                a.classList.toggle('active', a.getAttribute('data-page')===p);
+                a.addEventListener('click', ()=>{ try{ localStorage.setItem('cm_active_page', a.getAttribute('data-page')); }catch(e){} });
             });
-        }
-
-        // On click, remember clicked page in localStorage
-        document.querySelectorAll('.top-nav .nav-link').forEach(function(a){
-            a.addEventListener('click', function(){
-                try{ localStorage.setItem('cm_active_page', a.getAttribute('data-page')); }catch(e){}
-            });
-        });
-
-        // On load, determine active page from query string or localStorage
-        var params = new URLSearchParams(window.location.search);
-        var p = params.get('page') || (localStorage.getItem('cm_active_page')) || '';
-        if(p){ setActive(p); }
+        }catch(e){console.error(e)}
     })();
     </script>
     """,
     unsafe_allow_html=True,
 )
 
-st.markdown('<div class="content-offset"></div>', unsafe_allow_html=True)
+# Route to the page requested via ?page= query param
+_qp_page = st.query_params.get('page', '')
+if _qp_page and _qp_page.endswith('.py'):
+    try:
+        st.switch_page(_qp_page)
+    except Exception:
+        pass
 
-# run navigation after rendering nav
 pg.run()
 
 # ====================================================
@@ -171,44 +184,4 @@ iframe {
 </style>
 """, unsafe_allow_html=True)
 
-# ====================================================
-# PLANILHA (TELA 1)
-# ====================================================
-
-components.html(
-    """
-    <iframe
-        src="https://docs.google.com/spreadsheets/d/12MFBwvjJmwvtJj2I3GzqWluh8NpYrFYK7oXQFHNryqU/edit?usp=sharing"
-        style="
-            width:100vw;
-            height:100vh;
-            border:none;
-            margin:0;
-            padding:0;
-        "
-        allowfullscreen>
-    </iframe>
-    """,
-    height=1000
-)
-
-# ====================================================
-# LOOKER (TELA 2)
-# ====================================================
-
-components.html(
-    """
-    <iframe
-        src="https://lookerstudio.google.com/embed/reporting/31bc0f2d-27e1-466f-8759-8d73ff05c5cf/page/aoNyF"
-        style="
-            width:100vw;
-            height:100vh;
-            border:none;
-            margin:0;
-            padding:0;
-        "
-        allowfullscreen>
-    </iframe>
-    """,
-    height=1000
-)
+# (Removed hardcoded iframes; each page should render its own content)
