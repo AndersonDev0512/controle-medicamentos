@@ -1,11 +1,27 @@
 from typing import Final
 
 COLUNAS_ESTOQUE: Final = [
-    "Medicamento", "Quantidade", "Unidade de Medida", "Lote",
+    "ID", "Medicamento", "Usuário que Registrou", "Data de Inserção", "Quantidade", "Unidade de Medida", "Lote",
     "Data de Vencimento", "Dias para Vencer", "Status", "Observações",
 ]
-COLUNAS_REGISTRO: Final = ["Data Hora", "Medicamento", "Lote", "Quantidade"]
-COLUNAS_HISTORICO: Final = ["Data Hora", "Tipo", "Medicamento", "Quantidade", "Observação"]
+COLUNAS_MATERIAIS: Final = [
+    "Material", "Quantidade", "Unidade de Medida", "Lote",
+    "Data de Vencimento", "Dias para Vencer", "Status", "Observação",
+    "Usuário que Registrou", "Data de Inserção",
+]
+COLUNAS_REGISTRO: Final = [
+    "Data Hora", "Medicamento", "Lote", "Quantidade",
+    "Material", "Lote Material", "Aplicador", "Paciente", "Observação",
+]
+COLUNAS_HISTORICO: Final = [
+    "Data Hora", "Tipo", "Medicamento", "Quantidade", "Observação",
+    "Aplicador", "Paciente", "Material", "Lote Material",
+]
+COLUNAS_AUDITORIA: Final = [
+    "ID", "Data", "Hora", "Usuário", "Módulo", "Registro",
+    "Campo Alterado", "Valor Anterior", "Valor Novo",
+    "Justificativa", "Origem",
+]
 
 UNIDADES_MEDIDA: Final = [
     "Comprimido(s)", "Ampola(s)", "Frasco(s)", "ml", "mg", "g",

@@ -10,6 +10,7 @@ class Config:
     aba_materiais: str = "Estoque de Materiais"
     aba_registro: str = "Registro Diário de Medicamentos"
     aba_historico: str = "Histórico de Movimentações"
+    aba_auditoria: str = "AUDITORIA"
     clinic_name: str = "Clínica"
     responsible_email: str = ""
     dias_alerta_atencao: int = 30

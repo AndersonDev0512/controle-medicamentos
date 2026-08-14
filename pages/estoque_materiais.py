@@ -1,21 +1,21 @@
-import streamlit as st
-import streamlit.components.v1 as components
-import pandas as pd
 # pyright: reportMissingModuleSource=false
 from io import BytesIO
-from services.estoque_service import get_estoque
-from utils.config import get_config
-from utils.constants import STATUS_VENCIDO, STATUS_CRITICO, STATUS_ATENCAO, STATUS_PROXIMO, STATUS_OK
-from utils.helpers import normalizar_texto, status_label
 
+import pandas as pd
 import plotly.express as px
+import streamlit as st
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import landscape, letter
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-def gerar_pdf_estoque(dataframe: pd.DataFrame, titulo: str) -> bytes:
+from services.estoque_service import get_materiais
+from utils.constants import STATUS_ATENCAO, STATUS_CRITICO, STATUS_OK, STATUS_PROXIMO, STATUS_VENCIDO
+from utils.helpers import normalizar_texto, status_label
+
+
+def gerar_pdf_materiais(dataframe: pd.DataFrame) -> bytes:
     buffer = BytesIO()
     documento = SimpleDocTemplate(
         buffer,
@@ -25,8 +25,7 @@ def gerar_pdf_estoque(dataframe: pd.DataFrame, titulo: str) -> bytes:
         topMargin=0.35 * inch,
         bottomMargin=0.35 * inch,
     )
-    estilos = getSampleStyleSheet()
-    colunas = ["Medicamento", "Quantidade", "Unidade de Medida", "Lote", "Data de Vencimento", "Dias para Vencer", "Status"]
+    colunas = ["Material", "Quantidade", "Unidade de Medida", "Lote", "Data de Vencimento", "Dias para Vencer", "Status"]
     dados = [colunas]
     for _, linha in dataframe.reindex(columns=colunas, fill_value="").iterrows():
         dados.append([str(linha[coluna]) for coluna in colunas])
@@ -45,26 +44,28 @@ def gerar_pdf_estoque(dataframe: pd.DataFrame, titulo: str) -> bytes:
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
-    documento.build([Paragraph(titulo, estilos["Title"]), Spacer(1, 0.15 * inch), tabela])
+    estilos = getSampleStyleSheet()
+    documento.build([Paragraph("Estoque de Materiais", estilos["Title"]), Spacer(1, 0.15 * inch), tabela])
     return buffer.getvalue()
 
-st.markdown('<h1 class="page-title">📦 Estoque de Medicamento</h1>', unsafe_allow_html=True)
 
-df = get_estoque()
+st.markdown('<h1 class="page-title">🧴 Estoque de Materiais</h1>', unsafe_allow_html=True)
+
+df = get_materiais()
 if df.empty:
-    st.info("Nenhum medicamento cadastrado. Acesse **Cadastrar Medicamento** para começar.")
+    st.info("Nenhum material cadastrado. Acesse **Cadastrar Material** para começar.")
     if st.button("➕ Cadastrar agora"):
-        st.switch_page("pages/cadastrar_medicamento.py")
+        st.switch_page("pages/cadastrar_material.py")
     st.stop()
 
 st.markdown('<div class="section-header">Filtros avançados</div>', unsafe_allow_html=True)
 c1, c2, c3 = st.columns([3, 2, 1])
 with c1:
-    pesquisa = st.text_input("🔍 Pesquisar por medicamento ou lote", placeholder="Ex.: Acido, Ácido, 05143 ou AMP")
+    pesquisa = st.text_input("🔍 Pesquisar por material ou lote", placeholder="Ex.: Seringa, seringa, 05143 ou CX")
 with c2:
     filtro_status = st.selectbox("Filtrar por status", ["Todos", STATUS_VENCIDO, STATUS_CRITICO, STATUS_ATENCAO, STATUS_PROXIMO, STATUS_OK])
 with c3:
-    ordenar = st.selectbox("Ordenar por", ["Medicamento", "Dias para Vencer", "Quantidade", "Data de Vencimento", "Status"])
+    ordenar = st.selectbox("Ordenar por", ["Material", "Dias para Vencer", "Quantidade", "Data de Vencimento", "Status"])
 
 c4, c5, c6 = st.columns(3)
 with c4:
@@ -77,7 +78,7 @@ with c6:
 df_filt = df.copy()
 if pesquisa:
     termo = normalizar_texto(pesquisa)
-    mascara = df_filt["Medicamento"].map(normalizar_texto).str.contains(termo, regex=False)
+    mascara = df_filt["Material"].map(normalizar_texto).str.contains(termo, regex=False)
     mascara |= df_filt["Lote"].map(normalizar_texto).str.contains(termo, regex=False)
     df_filt = df_filt[mascara]
 if filtro_status != "Todos":
@@ -97,7 +98,7 @@ display_df = df_filt.copy()
 display_df["Status"] = display_df["Status"].map(lambda status: status_label(str(status)))
 
 st.caption(f"Exibindo {len(df_filt)} de {len(df)} registro(s)")
-colunas = ["Medicamento", "Quantidade", "Unidade de Medida", "Lote", "Data de Vencimento", "Dias para Vencer", "Status"]
+colunas = ["Material", "Quantidade", "Unidade de Medida", "Lote", "Data de Vencimento", "Dias para Vencer", "Status"]
 st.dataframe(display_df[colunas], width="stretch", hide_index=True)
 
 grafico_coluna, resumo_coluna = st.columns([2, 1])
@@ -106,9 +107,8 @@ with grafico_coluna:
         contagem_status = df_filt.groupby("Status").size().reset_index(name="Registros")
         ordem_status = [STATUS_VENCIDO, STATUS_CRITICO, STATUS_ATENCAO, STATUS_PROXIMO, STATUS_OK]
         contagem_status["Status"] = pd.Categorical(contagem_status["Status"], categories=ordem_status, ordered=True)
-        contagem_status = contagem_status.sort_values("Status")
         figura = px.bar(
-            contagem_status,
+            contagem_status.sort_values("Status"),
             x="Status",
             y="Registros",
             text="Registros",
@@ -132,25 +132,12 @@ st.markdown('<div class="section-header">Exportar resultado filtrado</div>', uns
 col_e1, col_e2, col_e3, _ = st.columns([1, 1, 1, 3])
 with col_e1:
     csv = df_filt.drop(columns=["_sheet_row"], errors="ignore").to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-    st.download_button("📄 CSV", data=csv, file_name="estoque_medicamentos.csv", mime="text/csv", width="stretch")
+    st.download_button("📄 CSV", data=csv, file_name="estoque_materiais.csv", mime="text/csv", width="stretch")
 with col_e2:
     excel = BytesIO()
     with pd.ExcelWriter(excel, engine="openpyxl") as writer:
-        df_filt.drop(columns=["_sheet_row"], errors="ignore").to_excel(writer, index=False, sheet_name="Estoque")
-    st.download_button("📊 Excel", data=excel.getvalue(), file_name="estoque_medicamentos.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", width="stretch")
+        df_filt.drop(columns=["_sheet_row"], errors="ignore").to_excel(writer, index=False, sheet_name="Materiais")
+    st.download_button("📊 Excel", data=excel.getvalue(), file_name="estoque_materiais.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", width="stretch")
 with col_e3:
-    pdf = gerar_pdf_estoque(display_df, "Estoque de Medicamento")
-    st.download_button("📑 PDF", data=pdf, file_name="estoque_medicamentos.pdf", mime="application/pdf", width="stretch")
-
-config = get_config()
-spreadsheet_id = config.spreadsheet_id
-if "/spreadsheets/d/" in spreadsheet_id:
-    spreadsheet_id = spreadsheet_id.split("/spreadsheets/d/", 1)[1].split("/", 1)[0]
-
-if spreadsheet_id:
-    st.markdown('<div class="section-header">Planilha de Estoque de Medicamentos</div>', unsafe_allow_html=True)
-    components.iframe(
-        f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit?gid=0#gid=0",
-        height=620,
-        scrolling=True,
-    )
+    pdf = gerar_pdf_materiais(display_df)
+    st.download_button("📑 PDF", data=pdf, file_name="estoque_materiais.pdf", mime="application/pdf", width="stretch")

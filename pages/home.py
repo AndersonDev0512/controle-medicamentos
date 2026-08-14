@@ -18,12 +18,16 @@ st.markdown(
     'color:#64748b;margin-bottom:6px;">Estoque de Medicamentos</div>',
     unsafe_allow_html=True,
 )
-mc1, mc2, mc3, mc4, mc5 = st.columns(5)
-mc1.markdown(metric_card("⚫ VENCIDO",                kpis.get("vencidos", 0), "⚫", "#475569"), unsafe_allow_html=True)
-mc2.markdown(metric_card("🔴 CRÍTICO (até 15 dias)",  kpis.get("critico",  0), "🔴", "#ef4444"), unsafe_allow_html=True)
-mc3.markdown(metric_card("🟠 ATENÇÃO (16 a 89 dias)", kpis.get("atencao",  0), "🟠", "#f97316"), unsafe_allow_html=True)
-mc4.markdown(metric_card("🟡 PRÓXIMO (90 a 120 dias)",kpis.get("proximos", 0), "🟡", "#f59e0b"), unsafe_allow_html=True)
-mc5.markdown(metric_card("🟢 OK (+120 dias)",         kpis.get("ok",       0), "🟢", "#22c55e"), unsafe_allow_html=True)
+med_total_col, med_total_value = st.columns([1.2, 2.8])
+with med_total_col:
+    st.markdown(metric_card("TOTAL", kpis.get("total_medicamentos", 0), "📦", "#6366f1"), unsafe_allow_html=True)
+with med_total_value:
+    mc1, mc2, mc3, mc4, mc5 = st.columns(5)
+    mc1.markdown(metric_card("⚫ VENCIDO",                kpis.get("vencidos", 0), "⚫", "#475569"), unsafe_allow_html=True)
+    mc2.markdown(metric_card("🔴 CRÍTICO (até 15 dias)",  kpis.get("critico",  0), "🔴", "#ef4444"), unsafe_allow_html=True)
+    mc3.markdown(metric_card("🟠 ATENÇÃO (16 a 89 dias)", kpis.get("atencao",  0), "🟠", "#f97316"), unsafe_allow_html=True)
+    mc4.markdown(metric_card("🟡 PRÓXIMO (90 a 120 dias)",kpis.get("proximos", 0), "🟡", "#f59e0b"), unsafe_allow_html=True)
+    mc5.markdown(metric_card("🟢 OK (+120 dias)",         kpis.get("ok",       0), "🟢", "#22c55e"), unsafe_allow_html=True)
 
 st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
 
@@ -33,12 +37,16 @@ st.markdown(
     'color:#64748b;margin-bottom:6px;">Estoque de Materiais</div>',
     unsafe_allow_html=True,
 )
-mm1, mm2, mm3, mm4, mm5 = st.columns(5)
-mm1.markdown(metric_card("⚫ VENCIDO",                kpis_m.get("vencidos", 0), "⚫", "#475569"), unsafe_allow_html=True)
-mm2.markdown(metric_card("🔴 CRÍTICO (até 15 dias)",  kpis_m.get("critico",  0), "🔴", "#ef4444"), unsafe_allow_html=True)
-mm3.markdown(metric_card("🟠 ATENÇÃO (16 a 89 dias)", kpis_m.get("atencao",  0), "🟠", "#f97316"), unsafe_allow_html=True)
-mm4.markdown(metric_card("🟡 PRÓXIMO (90 a 120 dias)",kpis_m.get("proximos", 0), "🟡", "#f59e0b"), unsafe_allow_html=True)
-mm5.markdown(metric_card("🟢 OK (+120 dias)",         kpis_m.get("ok",       0), "🟢", "#22c55e"), unsafe_allow_html=True)
+mat_total_col, mat_total_value = st.columns([1.2, 2.8])
+with mat_total_col:
+    st.markdown(metric_card("TOTAL", kpis_m.get("total", 0), "📦", "#10b981"), unsafe_allow_html=True)
+with mat_total_value:
+    mm1, mm2, mm3, mm4, mm5 = st.columns(5)
+    mm1.markdown(metric_card("⚫ VENCIDO",                kpis_m.get("vencidos", 0), "⚫", "#475569"), unsafe_allow_html=True)
+    mm2.markdown(metric_card("🔴 CRÍTICO (até 15 dias)",  kpis_m.get("critico",  0), "🔴", "#ef4444"), unsafe_allow_html=True)
+    mm3.markdown(metric_card("🟠 ATENÇÃO (16 a 89 dias)", kpis_m.get("atencao",  0), "🟠", "#f97316"), unsafe_allow_html=True)
+    mm4.markdown(metric_card("🟡 PRÓXIMO (90 a 120 dias)",kpis_m.get("proximos", 0), "🟡", "#f59e0b"), unsafe_allow_html=True)
+    mm5.markdown(metric_card("🟢 OK (+120 dias)",         kpis_m.get("ok",       0), "🟢", "#22c55e"), unsafe_allow_html=True)
 
 st.markdown("<hr style='border-color:#1e293b;margin:16px 0'/>", unsafe_allow_html=True)
 

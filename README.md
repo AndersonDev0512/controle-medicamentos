@@ -91,6 +91,28 @@ Observação importante: não faça commit do arquivo JSON da Service Account no
 
 Após configurar o segredo, obtenha o `client_email` da Service Account (ex.: `xxx@yyy.iam.gserviceaccount.com`) e compartilhe a planilha com este e-mail (permissão de edição).
 
+## Auditoria protegida
+
+O aplicativo cria a aba `AUDITORIA` automaticamente na primeira alteração. Caso prefira criá-la antes, use exatamente esta primeira linha como cabeçalho:
+
+```text
+ID | Data | Hora | Usuário | Módulo | Registro | Campo Alterado | Valor Anterior | Valor Novo | Justificativa | Origem
+```
+
+Não inclua fórmulas nessa aba. Cada evento recebe um ID único, data, hora e `Origem = Sistema Streamlit` automaticamente.
+
+Para bloquear a auditoria no Google Sheets:
+
+1. Abra a aba `AUDITORIA` e selecione **Dados → Proteger páginas e intervalos**.
+2. Escolha **Página** e marque `AUDITORIA`.
+3. Em **Definir permissões**, selecione **Restringir quem pode editar**.
+4. Mantenha apenas estes editores:
+  - `anderson.erdeval@gmail.com`
+  - `streamlit-medicamentos@medicamentos-504918.iam.gserviceaccount.com`
+5. Para os demais usuários da planilha, conceda somente visualização ou comentário.
+
+O proprietário da planilha continua podendo alterar proteções no Google Sheets. A conta de serviço precisa permanecer como editora da planilha para que o Streamlit consiga registrar auditorias.
+
 ## Erros comuns
 
 - `gcp_service_account não encontrado`: verifique se o secret foi criado no Streamlit Cloud ou se exportou a variável de ambiente.

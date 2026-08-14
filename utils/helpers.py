@@ -3,8 +3,9 @@ import streamlit as st
 from datetime import datetime, date
 from typing import Optional, Union, Any, Dict
 from collections.abc import Mapping
+import unicodedata
 from utils.constants import (
-    STATUS_VENCIDO, STATUS_ATENCAO, STATUS_PROXIMO, STATUS_OK,
+    STATUS_VENCIDO, STATUS_CRITICO, STATUS_ATENCAO, STATUS_PROXIMO, STATUS_OK,
     CORES_STATUS, DIAS_CRITICO, DIAS_ATENCAO, DIAS_PROXIMO,
 )
 import json
@@ -93,6 +94,12 @@ def safe_float(value: object, default: float = 0.0) -> float:
         return float(str(value).replace(",", "."))
     except (ValueError, TypeError):
         return default
+
+
+def normalizar_texto(value: object) -> str:
+    """Normaliza texto para pesquisas sem diferença entre caixa ou acentos."""
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    return "".join(char for char in text if not unicodedata.combining(char)).casefold()
 
 
 def load_css() -> None:

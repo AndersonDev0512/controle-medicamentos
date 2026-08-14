@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 from datetime import date, datetime
 from services.estoque_service import (
     get_estoque,
@@ -6,7 +7,12 @@ from services.estoque_service import (
     get_medicamentos_list,
     get_lotes_por_medicamento,
 )
-from services.sheets_service import adicionar_medicamento, atualizar_medicamento, excluir_medicamento
+from services.sheets_service import (
+    adicionar_medicamento,
+    atualizar_medicamento,
+    auditar_alteracao,
+    excluir_medicamento,
+)
 from utils.helpers import calcular_dias_para_vencer, calcular_status
 
 st.markdown('<h1 class="page-title">➕ Cadastrar Medicamento</h1>', unsafe_allow_html=True)
@@ -16,6 +22,7 @@ tab_cad, tab_edit, tab_del, tab_cons = st.tabs(["📝 Cadastrar", "✏️ Editar
 # ── CADASTRAR ──────────────────────────────────────────────────────────────────
 with tab_cad:
     st.markdown('<div class="section-header">Novo(s) Medicamento(s)</div>', unsafe_allow_html=True)
+    st.caption("ID: próximo número automático | Usuário: Stephanny | Inserção/Revisão: data e hora atual")
 
     if 'med_ids' not in st.session_state:
         st.session_state.med_ids = [0]
@@ -91,6 +98,8 @@ with tab_cad:
                 val_str = validade.strftime("%d/%m/%Y") if isinstance(validade, date) else str(validade)
                 registros.append({
                     "Medicamento": nome,
+                    "Usuário que Registrou": "Stephanny",
+                    "Data de Inserção": "=NOW()",
                     "Quantidade": int(qtd),
                     "Unidade de Medida": unidade,
                     "Lote": lote,
@@ -158,22 +167,31 @@ with tab_edit:
                 e_lote = st.text_input("Lote", value=str(row["Lote"]))
                 e_val = st.date_input("Validade", value=val_atual, format="DD/MM/YYYY")
                 e_obs = st.text_area("Observações", value=str(row.get("Observações", "")), height=100)
+            usuario = st.text_input("Usuário responsável *")
+            justificativa = st.text_area("Justificativa obrigatória *", placeholder="Descreva a razão da alteração.")
             btn_edit = st.form_submit_button("✅ Salvar Alterações", width='stretch')
 
         if btn_edit:
-            e_unidade = e_unidade_manual.strip() if e_unidade_sel == "✏️ Inserir Manualmente" else e_unidade_sel
-            dados = {
-                "Medicamento": e_nome.strip(),
-                "Quantidade": int(e_qtd),
-                "Unidade de Medida": e_unidade,
-                "Lote": e_lote.strip(),
-                "Data de Vencimento": e_val.strftime("%d/%m/%Y"),
-                "Observações": e_obs.strip(),
-            }
-            if atualizar_medicamento(sheet_row, dados):
-                get_estoque.clear()
-                st.success("✅ Medicamento atualizado com sucesso!")
-                st.rerun()
+            if not usuario.strip() or not justificativa.strip():
+                st.error("Usuário responsável e justificativa são obrigatórios.")
+            else:
+                e_unidade = e_unidade_manual.strip() if e_unidade_sel == "✏️ Inserir Manualmente" else e_unidade_sel
+                dados = {
+                    "Medicamento": e_nome.strip(),
+                    "Quantidade": int(e_qtd),
+                    "Unidade de Medida": e_unidade,
+                    "Lote": e_lote.strip(),
+                    "Data de Vencimento": e_val.strftime("%d/%m/%Y"),
+                    "Observações": e_obs.strip(),
+                }
+                if atualizar_medicamento(sheet_row, dados):
+                    for campo, valor_novo in dados.items():
+                        valor_anterior = str(row.get(campo, ""))
+                        if valor_anterior != str(valor_novo):
+                            auditar_alteracao("Medicamentos", f"{selecionado_nome} - Lote {selecionado_lote}", campo, valor_anterior, valor_novo, justificativa.strip(), usuario.strip())
+                    get_estoque.clear()
+                    st.success("✅ Medicamento atualizado com sucesso!")
+                    st.rerun()
 
 # ── EXCLUIR ────────────────────────────────────────────────────────────────────
 with tab_del:
@@ -197,14 +215,28 @@ with tab_del:
         sheet_row_del = int(row_del['_sheet_row'])
 
         st.warning(f"⚠️ Tem certeza que deseja excluir **{sel_nome} — Lote: {sel_lote}**? Esta ação não pode ser desfeita.")
+        st.markdown("**Registro selecionado para exclusão**")
+        st.dataframe(row_del.drop(labels=['_sheet_row'], errors='ignore').to_frame().T, width='stretch', hide_index=True)
+        usuario_del = st.text_input("Usuário responsável *", key="del_med_usuario")
+        justificativa_del = st.text_area("Justificativa obrigatória *", key="del_med_justificativa", placeholder="Descreva a razão da exclusão.")
 
         col_btn, _ = st.columns([1, 3])
         with col_btn:
             if st.button("🗑️ Confirmar Exclusão", key="btn_del"):
-                if excluir_medicamento(sheet_row_del):
+                if not usuario_del.strip() or not justificativa_del.strip():
+                    st.error("Usuário responsável e justificativa são obrigatórios.")
+                elif excluir_medicamento(sheet_row_del):
+                    auditar_alteracao("Medicamentos", f"{sel_nome} - Lote {sel_lote}", "Registro", str(row_del.drop(labels=['_sheet_row'], errors='ignore').to_dict()), "Excluído", justificativa_del.strip(), usuario_del.strip())
                     get_estoque.clear()
+                    st.session_state["ultimo_medicamento_excluido"] = f"{sel_nome} - Lote {sel_lote}"
                     st.success("✅ Medicamento excluído com sucesso!")
                     st.rerun()
+
+        if st.session_state.get("ultimo_medicamento_excluido"):
+            st.success(f"Tabela atualizada após a exclusão de {st.session_state['ultimo_medicamento_excluido']}.")
+            tabela_atual = get_estoque().drop(columns=['_sheet_row'], errors='ignore')
+            st.dataframe(tabela_atual, width='stretch', hide_index=True)
+            del st.session_state["ultimo_medicamento_excluido"]
 
 # ── CONSULTAR ──────────────────────────────────────────────────────────────────
 with tab_cons:
@@ -214,10 +246,33 @@ with tab_cons:
     if df3.empty:
         st.info("Nenhum medicamento cadastrado.")
     else:
-        pesq = st.text_input("🔍 Pesquisar", placeholder="Nome, lote...", key="pesq_cons")
+        st.caption("Alterações ficam disponíveis na aba Editar e são registradas automaticamente na auditoria.")
         df_cons = df3.drop(columns=['_sheet_row'], errors='ignore').copy()
-        if pesq:
-            mask = df_cons["Medicamento"].astype(str).str.contains(pesq, case=False, na=False)
-            mask |= df_cons["Lote"].astype(str).str.contains(pesq, case=False, na=False)
+        campos_disponiveis = [
+            campo for campo in ["ID", "Medicamento", "Lote", "Quantidade", "Unidade de Medida", "Data de Vencimento", "Status", "Usuário que Registrou"]
+            if campo in df_cons.columns
+        ]
+        campos_pesquisa = st.multiselect(
+            "Campos para pesquisar",
+            options=campos_disponiveis,
+            default=[campo for campo in ["Medicamento", "Lote"] if campo in campos_disponiveis],
+            key="campos_cons",
+        )
+        pesq = st.text_input("🔍 Termo de pesquisa", placeholder="Ex.: Lidocaína, 000513, AMP...", key="pesq_cons")
+        filtro1, filtro2 = st.columns(2)
+        with filtro1:
+            qtd_min = st.number_input("Quantidade mínima", min_value=0, value=0, step=1, key="qtd_min_cons")
+        with filtro2:
+            qtd_max = st.number_input("Quantidade máxima", min_value=0, value=0, step=1, key="qtd_max_cons", help="Use 0 para não limitar.")
+        if pesq and campos_pesquisa:
+            mask = pd.Series(False, index=df_cons.index)
+            for campo in campos_pesquisa:
+                mask |= df_cons[campo].astype(str).str.contains(pesq, case=False, na=False)
             df_cons = df_cons[mask]
+        if "Quantidade" in df_cons.columns:
+            quantidades = pd.to_numeric(df_cons["Quantidade"].astype(str).str.replace(",", ".", regex=False), errors="coerce").fillna(0)
+            df_cons = df_cons[quantidades >= qtd_min]
+            if qtd_max > 0:
+                df_cons = df_cons[quantidades <= qtd_max]
+        st.caption(f"{len(df_cons)} registro(s) encontrado(s)")
         st.dataframe(df_cons, width='stretch', hide_index=True)
