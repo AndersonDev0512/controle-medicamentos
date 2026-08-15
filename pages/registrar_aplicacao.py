@@ -9,9 +9,17 @@ from services.estoque_service import (
     get_lotes_por_material,
     get_quantidade_disponivel_material,
 )
-from services.aplicacao_service import registrar_aplicacao, proximo_id_registro
+from services.aplicacao_service import registrar_aplicacao
 from services.sheets_service import ler_registro_diario
 from utils.helpers import formatar_data_hora
+
+
+def proximo_id_registro() -> int:
+    registros = ler_registro_diario()
+    if registros.empty or "ID" not in registros.columns:
+        return 1
+    ids = pd.to_numeric(registros["ID"], errors="coerce").dropna()
+    return int(ids.max()) + 1 if not ids.empty else 1
 
 st.markdown('<h1 class="page-title">💉 Registrar Aplicação</h1>', unsafe_allow_html=True)
 
