@@ -4,11 +4,21 @@ from io import BytesIO
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import landscape, letter
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.units import inch
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+HAS_REPORTLAB = True
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import landscape, letter
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import inch
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+except Exception:
+    HAS_REPORTLAB = False
+    colors = None
+    landscape = letter = None
+    getSampleStyleSheet = None
+    inch = None
+    Paragraph = SimpleDocTemplate = Spacer = Table = TableStyle = None
 
 from services.estoque_service import get_materiais
 from utils.constants import STATUS_ATENCAO, STATUS_CRITICO, STATUS_OK, STATUS_PROXIMO, STATUS_VENCIDO
@@ -16,6 +26,9 @@ from utils.helpers import normalizar_texto, status_label
 
 
 def gerar_pdf_materiais(dataframe: pd.DataFrame) -> bytes:
+    if not HAS_REPORTLAB:
+        raise RuntimeError("reportlab não está instalado no ambiente atual.")
+
     buffer = BytesIO()
     documento = SimpleDocTemplate(
         buffer,
@@ -139,5 +152,8 @@ with col_e2:
         df_filt.drop(columns=["_sheet_row"], errors="ignore").to_excel(writer, index=False, sheet_name="Materiais")
     st.download_button("📊 Excel", data=excel.getvalue(), file_name="estoque_materiais.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", width="stretch")
 with col_e3:
-    pdf = gerar_pdf_materiais(display_df)
-    st.download_button("📑 PDF", data=pdf, file_name="estoque_materiais.pdf", mime="application/pdf", width="stretch")
+    if HAS_REPORTLAB:
+        pdf = gerar_pdf_materiais(display_df)
+        st.download_button("📑 PDF", data=pdf, file_name="estoque_materiais.pdf", mime="application/pdf", width="stretch")
+    else:
+        st.info("PDF indisponível: reportlab não está instalado neste ambiente.")

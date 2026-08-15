@@ -13,7 +13,7 @@ from services.sheets_service import (
     auditar_alteracao,
     excluir_medicamento,
 )
-from utils.helpers import calcular_dias_para_vencer, calcular_status
+from utils.helpers import calcular_dias_para_vencer, calcular_status, formatar_data_hora
 
 st.markdown('<h1 class="page-title">➕ Cadastrar Medicamento</h1>', unsafe_allow_html=True)
 
@@ -99,7 +99,7 @@ with tab_cad:
                 registros.append({
                     "Medicamento": nome,
                     "Usuário que Registrou": "Stephanny",
-                    "Data de Inserção": "=NOW()",
+                    "Data de Inserção": formatar_data_hora(),
                     "Quantidade": int(qtd),
                     "Unidade de Medida": unidade,
                     "Lote": lote,

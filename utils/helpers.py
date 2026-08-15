@@ -1,6 +1,7 @@
 from __future__ import annotations
 import streamlit as st
 from datetime import datetime, date
+from zoneinfo import ZoneInfo
 from typing import Optional, Union, Any, Dict
 from collections.abc import Mapping
 import unicodedata
@@ -79,7 +80,8 @@ def calcular_status(dias: Optional[int]) -> str:
 
 
 def formatar_data_hora() -> str:
-    return datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    tz = ZoneInfo("America/Cuiaba")
+    return datetime.now(tz).strftime("%d/%m/%Y %H:%M:%S")
 
 
 def safe_int(value: object, default: int = 0) -> int:

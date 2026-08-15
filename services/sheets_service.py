@@ -13,6 +13,7 @@ from utils.constants import (
 from utils.helpers import formatar_data_hora, sanitize_service_account
 import traceback
 import re
+import unicodedata
 from uuid import uuid4
 
 # Lazily import gspread; provide friendly messages when unavailable
@@ -129,7 +130,23 @@ if _GSPREAD_AVAILABLE:
 
 
     def _get_ws(aba: str) -> gspread.Worksheet:
-        return _get_spreadsheet().worksheet(aba)
+        spreadsheet = _get_spreadsheet()
+        try:
+            return spreadsheet.worksheet(aba)
+        except gspread.exceptions.WorksheetNotFound:
+            def tokens(value: str) -> set[str]:
+                normalized = unicodedata.normalize("NFKD", str(value)).encode("ascii", "ignore").decode().lower()
+                return set(re.findall(r"[a-z0-9]+", normalized))
+
+            requested = tokens(aba) - {"de", "da", "do", "dos", "das"}
+            for worksheet in spreadsheet.worksheets():
+                available = tokens(worksheet.title) - {"de", "da", "do", "dos", "das"}
+                if requested and all(
+                    token in available or token.rstrip("s") in {item.rstrip("s") for item in available}
+                    for token in requested
+                ):
+                    return worksheet
+            raise
 
 
     def _ensure_cols(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
@@ -144,29 +161,39 @@ if _GSPREAD_AVAILABLE:
 
 
     def _canonical_estoque_column(header: str) -> str | None:
-        normalized = str(header).strip().lower()
+        text = str(header or '').strip().lower()
+        text = ''.join(ch for ch in text if ch.isalnum() or ch.isspace())
+        text = re.sub(r'\s+', ' ', text)
+
         aliases = {
             "id": "ID",
             "medicamento": "Medicamento",
-            "usuário que registrou": "Usuário que Registrou",
             "usuario que registrou": "Usuário que Registrou",
-            "dia de inserção no estoque ou revisão": "Data de Inserção",
             "dia de insercao no estoque ou revisao": "Data de Inserção",
-            "data de inserção": "Data de Inserção",
+            "data de insercao no estoque ou revisao": "Data de Inserção",
+            "data de inserção no estoque ou revisão": "Data de Inserção",
+            "dia de inserção no estoque ou revisão": "Data de Inserção",
             "data de insercao": "Data de Inserção",
+            "data de inserção": "Data de Inserção",
+            "dia de inserção": "Data de Inserção",
+            "dia de insercao": "Data de Inserção",
             "quantidade": "Quantidade",
             "unidade de medida": "Unidade de Medida",
             "lote": "Lote",
             "data de vencimento": "Data de Vencimento",
-            "dias p vencer": "Dias para Vencer",
             "dias para vencer": "Dias para Vencer",
+            "dias p vencer": "Dias para Vencer",
             "status": "Status",
-            "observações(opcional)": "Observações",
-            "observacoes(opcional)": "Observações",
-            "observações": "Observações",
+            "observacoes opcional": "Observações",
+            "observações opcional": "Observações",
             "observacoes": "Observações",
+            "observações": "Observações",
         }
-        return aliases.get(normalized)
+
+        if "inser" in text and ("data" in text or "dia" in text):
+            return "Data de Inserção"
+
+        return aliases.get(text)
 
 
     def _column_letter(column_index: int) -> str:
@@ -263,13 +290,30 @@ if _GSPREAD_AVAILABLE:
             if not all_rows or len(all_rows) < 2:
                 return pd.DataFrame(columns=COLUNAS_MATERIAIS)
             headers = all_rows[0]
+            aliases = {
+                "id": "ID",
+                "nome do material": "Material",
+                "material": "Material",
+                "lote do material": "Lote",
+                "lote material": "Lote",
+                "lote": "Lote",
+                "quantidade": "Quantidade",
+                "tipo": "Tipo",
+            }
+            normalized_headers = [
+                aliases.get(str(header).strip().lower().rstrip(":"), header)
+                for header in headers
+            ]
             data_rows = all_rows[1:]
             records: list[dict[str, Any]] = []
             sheet_rows: list[int] = []
             for index, row in enumerate(data_rows, start=2):
                 if not any(str(c).strip() for c in row):
                     continue
-                records.append({h: (row[i] if i < len(row) else '') for i, h in enumerate(headers)})
+                record = {h: (row[i] if i < len(row) else '') for i, h in enumerate(normalized_headers)}
+                if not str(record.get("Material", "")).strip():
+                    continue
+                records.append(record)
                 sheet_rows.append(index)
             if not records:
                 return pd.DataFrame(columns=COLUNAS_MATERIAIS)
@@ -287,8 +331,47 @@ if _GSPREAD_AVAILABLE:
     def ler_registro_diario() -> pd.DataFrame:
         config = get_config()
         try:
-            data = _get_ws(config.aba_registro).get_all_records()
-            df = pd.DataFrame(data) if data else pd.DataFrame(columns=COLUNAS_REGISTRO)
+            rows = _get_ws(config.aba_registro).get_all_values()
+            if not rows or len(rows) < 2:
+                return pd.DataFrame(columns=COLUNAS_REGISTRO)
+
+            aliases = {
+                "id": "ID",
+                "aplicadora": "Aplicador",
+                "nome da paciente": "Paciente",
+                "datahora": "Data Hora",
+                "medicamento": "Medicamento",
+                "lote medicamento": "Lote",
+                "material": "Material",
+                "lote material": "Lote Material",
+                "quantidade": "Quantidade",
+                "quantidade medicamento": "Quantidade Medicamento",
+                "quantidade material": "Quantidade Material",
+                "tipo material": "Tipo Material",
+                "aplicador": "Aplicador",
+                "paciente": "Paciente",
+                "observacao": "Observação",
+            }
+
+            def canonical(header: str) -> str:
+                normalized = unicodedata.normalize("NFKD", str(header))
+                normalized = normalized.encode("ascii", "ignore").decode().lower()
+                normalized = re.sub(r"[^a-z0-9]+", " ", normalized).strip()
+                return aliases.get(normalized, str(header).strip())
+
+            headers = [canonical(header) for header in rows[0]]
+            records = []
+            for row in rows[1:]:
+                if not any(str(value).strip() for value in row):
+                    continue
+                record = {}
+                for index, header in enumerate(headers):
+                    if header and header not in record:
+                        record[header] = row[index] if index < len(row) else ""
+                    elif header and index < len(row) and str(row[index]).strip():
+                        record[header] = row[index]
+                records.append(record)
+            df = pd.DataFrame(records) if records else pd.DataFrame(columns=COLUNAS_REGISTRO)
             return _ensure_cols(df, COLUNAS_REGISTRO)
         except gspread.exceptions.WorksheetNotFound:
             return pd.DataFrame(columns=COLUNAS_REGISTRO)
@@ -316,6 +399,10 @@ if _GSPREAD_AVAILABLE:
     # WRITE
     def adicionar_medicamento(dados: dict[str, Any]) -> bool:
         try:
+            # força data/hora real da operação, não fórmula ou valor antigo
+            if "Data de Inserção" in dados:
+                dados["Data de Inserção"] = formatar_data_hora()
+
             config = get_config()
             ws = _get_ws(config.aba_estoque)
 
@@ -390,6 +477,11 @@ if _GSPREAD_AVAILABLE:
                         new_row[idx] = formatar_data_hora()
                     else:
                         new_row[idx] = dados.get(canon, '')
+
+                header_name = headers[idx] if idx < len(headers) else ""
+                norm_header = str(header_name).strip().lower()
+                if 'inser' in norm_header and 'data' in norm_header:
+                    new_row[idx] = formatar_data_hora()
 
             # try insert, fallback to insertDimension+update, then fallback to append
             try:
@@ -484,7 +576,24 @@ if _GSPREAD_AVAILABLE:
     def adicionar_registro_diario(dados: dict[str, Any]) -> bool:
         try:
             config = get_config()
-            _get_ws(config.aba_registro).append_row(_row(dados, COLUNAS_REGISTRO), value_input_option="USER_ENTERED")
+            try:
+                ws = _get_ws(config.aba_registro)
+            except gspread.exceptions.WorksheetNotFound:
+                ws = _get_spreadsheet().add_worksheet(
+                    title=config.aba_registro,
+                    rows="1000",
+                    cols=str(max(len(COLUNAS_REGISTRO), 20)),
+                )
+                ws.append_row(COLUNAS_REGISTRO, value_input_option="USER_ENTERED")
+            headers = ws.row_values(1)
+            missing = [column for column in COLUNAS_REGISTRO if column not in headers]
+            if missing:
+                headers = headers + missing
+                end_col = _column_letter(len(headers))
+                ws.update(f"A1:{end_col}1", [headers], value_input_option="USER_ENTERED")
+            if not dados:
+                return True
+            ws.append_row(_row(dados, headers), value_input_option="USER_ENTERED")
             ler_registro_diario.clear()
             return True
         except Exception:
@@ -496,7 +605,27 @@ if _GSPREAD_AVAILABLE:
     def adicionar_historico(dados: dict[str, Any]) -> bool:
         try:
             config = get_config()
-            _get_ws(config.aba_historico).append_row(_row(dados, COLUNAS_HISTORICO), value_input_option="USER_ENTERED")
+            try:
+                ws = _get_ws(config.aba_historico)
+            except gspread.exceptions.WorksheetNotFound:
+                ws = _get_spreadsheet().add_worksheet(
+                    title=config.aba_historico,
+                    rows="1000",
+                    cols=str(max(len(COLUNAS_HISTORICO), 20)),
+                )
+                ws.append_row(COLUNAS_HISTORICO, value_input_option="USER_ENTERED")
+
+            headers = ws.row_values(1)
+            if not headers:
+                headers = list(COLUNAS_HISTORICO)
+                end_col = _column_letter(len(headers))
+                ws.update(f"A1:{end_col}1", [headers], value_input_option="USER_ENTERED")
+            missing = [column for column in COLUNAS_HISTORICO if column not in headers]
+            if missing:
+                headers = headers + missing
+                end_col = _column_letter(len(headers))
+                ws.update(f"A1:{end_col}1", [headers], value_input_option="USER_ENTERED")
+            ws.append_row(_row(dados, headers), value_input_option="USER_ENTERED")
             ler_historico.clear()
             return True
         except Exception:
@@ -562,6 +691,9 @@ if _GSPREAD_AVAILABLE:
                 if canon:
                     if canon in ("Dias para Vencer", "Status"):
                         new_row[idx] = ''
+                    elif canon == "ID":
+                        id_column = _column_letter(idx + 1)
+                        new_row[idx] = f"=MAX({id_column}$2:{id_column}{target - 1})+1"
                     elif canon == "Usuário que Registrou":
                         new_row[idx] = "Stephanny"
                     elif canon == "Data de Inserção":
@@ -620,7 +752,7 @@ if _GSPREAD_AVAILABLE:
                     t |= {'para'}
                 return t
 
-            skip = {"Dias para Vencer", "Status"}
+            skip = {"ID", "Dias para Vencer", "Status"}
             stop = {'de', 'da', 'do', 'dos', 'das', 'o', 'a', 'e'}
             cell_updates: list[dict] = []
             for col_idx, h in enumerate(headers, start=1):
@@ -670,8 +802,20 @@ if _GSPREAD_AVAILABLE:
     def auditar_alteracao(modulo: str, registro: str, campo_alterado: str, valor_anterior: object, valor_novo: object, justificativa: str, usuario: str = "Sistema Streamlit") -> bool:
         data_hora = formatar_data_hora()
         data, hora = data_hora.split(' ')
+        try:
+            config = get_config()
+            spreadsheet = _get_spreadsheet()
+            ws = spreadsheet.worksheet(config.aba_auditoria)
+            rows = ws.get_all_values()
+            ids = pd.to_numeric(
+                pd.Series([row[0] for row in rows[1:] if row]),
+                errors="coerce",
+            ).dropna()
+            proximo_id = int(ids.max()) + 1 if not ids.empty else 1
+        except Exception:
+            proximo_id = 1
         return adicionar_auditoria({
-            'ID': uuid4().hex,
+            'ID': proximo_id,
             'Data': data,
             'Hora': hora,
             'Usuário': usuario,

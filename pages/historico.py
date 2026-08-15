@@ -2,8 +2,49 @@ import streamlit as st
 import pandas as pd
 from datetime import date, timedelta
 from io import BytesIO
+
+HAS_REPORTLAB = True
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import landscape, letter
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import inch
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Table, TableStyle
+except Exception:
+    HAS_REPORTLAB = False
 from services.sheets_service import ler_historico
 from utils.constants import TIPOS_MOVIMENTACAO
+
+
+def gerar_pdf_aplicacoes(dataframe: pd.DataFrame, data_referencia: str) -> bytes:
+    if not HAS_REPORTLAB:
+        raise RuntimeError("reportlab não está instalado no ambiente atual.")
+    buffer = BytesIO()
+    documento = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(letter),
+        leftMargin=0.3 * inch,
+        rightMargin=0.3 * inch,
+        topMargin=0.3 * inch,
+        bottomMargin=0.3 * inch,
+    )
+    colunas = ["Data Hora", "Medicamento", "Quantidade", "Material", "Lote Material", "Aplicador", "Paciente", "Observação"]
+    dados = [colunas]
+    for _, linha in dataframe.reindex(columns=colunas, fill_value="").iterrows():
+        dados.append([str(linha[coluna]) for coluna in colunas])
+    tabela = Table(dados, repeatRows=1)
+    tabela.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#9ca3af")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f3f4f6")]),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    styles = getSampleStyleSheet()
+    documento.build([Paragraph("Aplicações do dia " + data_referencia, styles["Title"]), tabela])
+    return buffer.getvalue()
 
 st.markdown('<h1 class="page-title">📜 Histórico de Movimentações</h1>', unsafe_allow_html=True)
 
@@ -66,3 +107,11 @@ with col2:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         width='stretch',
     )
+with col1:
+    if HAS_REPORTLAB:
+        hoje = date.today().strftime("%d/%m/%Y")
+        aplicacoes_hoje = df[df["Data Hora"].astype(str).str.startswith(hoje)].copy()
+        pdf = gerar_pdf_aplicacoes(aplicacoes_hoje, hoje)
+        st.download_button("📑 PDF do dia", data=pdf, file_name="aplicacoes_do_dia.pdf", mime="application/pdf", width="stretch")
+    else:
+        st.info("PDF indisponível: reportlab não está instalado neste ambiente.")

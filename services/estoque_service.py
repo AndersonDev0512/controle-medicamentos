@@ -47,7 +47,7 @@ def get_quantidade_disponivel(medicamento: str, lote: str) -> int:
     rows = df[mask]
     if rows.empty:
         return 0
-    return safe_int(rows.iloc[0]["Quantidade"])
+    return int(pd.to_numeric(rows["Quantidade"], errors="coerce").fillna(0).sum())
 
 
 @st.cache_data(ttl=30)
@@ -73,14 +73,20 @@ def get_materiales_list() -> list[str]:
     df = get_materiais()
     if df.empty:
         return []
-    return sorted(df["Material"].dropna().unique().tolist())
+    return sorted(
+        value for value in df["Material"].dropna().astype(str).str.strip().unique().tolist()
+        if value
+    )
 
 
 def get_lotes_por_material(material: str) -> list[str]:
     df = get_materiais()
     if df.empty:
         return []
-    return df[df["Material"] == material]["Lote"].dropna().unique().tolist()
+    return [
+        value for value in df[df["Material"] == material]["Lote"].dropna().astype(str).str.strip().unique().tolist()
+        if value
+    ]
 
 
 def get_quantidade_disponivel_material(material: str, lote: str) -> int:
@@ -91,4 +97,4 @@ def get_quantidade_disponivel_material(material: str, lote: str) -> int:
     rows = df[mask]
     if rows.empty:
         return 0
-    return safe_int(rows.iloc[0]["Quantidade"])
+    return int(pd.to_numeric(rows["Quantidade"], errors="coerce").fillna(0).sum())

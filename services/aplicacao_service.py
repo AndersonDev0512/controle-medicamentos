@@ -1,7 +1,9 @@
 from __future__ import annotations
+import pandas as pd
 from services.sheets_service import (
     ler_estoque,
     ler_materiais,
+    ler_registro_diario,
     atualizar_medicamento,
     atualizar_material,
     adicionar_registro_diario,
@@ -10,7 +12,15 @@ from services.sheets_service import (
 )
 from services.estoque_service import get_estoque, get_materiais
 from utils.helpers import formatar_data_hora, safe_int
-from utils.constants import COLUNAS_ESTOQUE, COLUNAS_MATERIAIS
+from utils.constants import COLUNAS_ESTOQUE, COLUNAS_MATERIAIS, COLUNAS_REGISTRO
+
+
+def proximo_id_registro() -> int:
+    df = ler_registro_diario()
+    if df.empty or "ID" not in df.columns:
+        return 1
+    ids = pd.to_numeric(df["ID"], errors="coerce").dropna()
+    return int(ids.max()) + 1 if not ids.empty else 1
 
 
 def registrar_aplicacao(
@@ -19,11 +29,15 @@ def registrar_aplicacao(
     quantidade: int,
     material: str | None = None,
     lote_material: str | None = None,
+    quantidade_material: int = 0,
+    tipo_material: str = "",
     aplicador: str = "Sistema Streamlit",
     paciente: str = "",
     observacao: str = "",
     justificativa: str = "",
 ) -> tuple[bool, str]:
+    if not paciente.strip():
+        return False, "Nome do paciente é obrigatório."
     if not justificativa.strip():
         return False, "Justificativa é obrigatória para registrar uma aplicação."
 
@@ -53,10 +67,12 @@ def registrar_aplicacao(
             return False, "Material/Lote não encontrado no estoque."
         idx_mat = df_mat[mask_mat].index.tolist()[0]
         qtd_mat_atual = safe_int(df_mat.at[idx_mat, "Quantidade"])
-        if quantidade > qtd_mat_atual:
+        if quantidade_material <= 0:
+            return False, "Informe a quantidade de material utilizada."
+        if quantidade_material > qtd_mat_atual:
             return False, f"Estoque de material insuficiente. Disponível: {qtd_mat_atual}"
         material_atual = qtd_mat_atual
-        material_nova_qtd = qtd_mat_atual - quantidade
+        material_nova_qtd = qtd_mat_atual - quantidade_material
         material_sheet_row = int(df_mat.at[idx_mat, "_sheet_row"])
         dados_mat = {c: df_mat.at[idx_mat, c] for c in COLUNAS_MATERIAIS}
         dados_mat["Quantidade"] = material_nova_qtd
@@ -65,6 +81,10 @@ def registrar_aplicacao(
     dados = {c: df.at[df_idx, c] for c in COLUNAS_ESTOQUE}
     dados["Quantidade"] = nova_qtd
     sheet_row = int(df.at[df_idx, "_sheet_row"])
+
+    # Garante a aba antes de baixar o estoque, evitando uma baixa sem registro.
+    if not adicionar_registro_diario({}):
+        return False, "Não foi possível preparar a aba de registro diário."
 
     if not atualizar_medicamento(sheet_row, dados):
         return False, "Erro ao atualizar estoque do medicamento."
@@ -76,17 +96,24 @@ def registrar_aplicacao(
 
     data_hora = formatar_data_hora()
     registro = {
+        "ID": proximo_id_registro(),
         "Data Hora": data_hora,
         "Medicamento": medicamento,
         "Lote": lote,
         "Quantidade": quantidade,
+        "Quantidade Medicamento": quantidade,
+        "Quantidade Material": quantidade_material if material else 0,
         "Material": material or "",
         "Lote Material": lote_material or "",
+        "Tipo Material": tipo_material or "",
         "Aplicador": aplicador,
         "Paciente": paciente,
         "Observação": observacao or justificativa or "",
     }
     if not adicionar_registro_diario(registro):
+        atualizar_medicamento(sheet_row, {**dados, "Quantidade": qtd_atual})
+        if dados_mat is not None:
+            atualizar_material(material_sheet_row, {**dados_mat, "Quantidade": material_atual})
         return False, "Aplicação registrada no estoque, mas houve erro ao salvar o registro diário."
     if not adicionar_historico(
         {
@@ -101,6 +128,9 @@ def registrar_aplicacao(
             "Lote Material": lote_material or "",
         }
     ):
+        atualizar_medicamento(sheet_row, {**dados, "Quantidade": qtd_atual})
+        if dados_mat is not None:
+            atualizar_material(material_sheet_row, {**dados_mat, "Quantidade": material_atual})
         return False, "Aplicação registrada no estoque, mas houve erro ao salvar o histórico."
 
     auditar_alteracao(

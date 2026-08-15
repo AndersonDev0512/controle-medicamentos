@@ -5,13 +5,14 @@ COLUNAS_ESTOQUE: Final = [
     "Data de Vencimento", "Dias para Vencer", "Status", "Observações",
 ]
 COLUNAS_MATERIAIS: Final = [
-    "Material", "Quantidade", "Unidade de Medida", "Lote",
+    "ID", "Material", "Quantidade", "Unidade de Medida", "Lote",
     "Data de Vencimento", "Dias para Vencer", "Status", "Observação",
     "Usuário que Registrou", "Data de Inserção",
 ]
 COLUNAS_REGISTRO: Final = [
-    "Data Hora", "Medicamento", "Lote", "Quantidade",
-    "Material", "Lote Material", "Aplicador", "Paciente", "Observação",
+    "ID", "Data Hora", "Medicamento", "Lote", "Quantidade",
+    "Quantidade Medicamento", "Quantidade Material", "Material", "Lote Material",
+    "Tipo Material", "Aplicador", "Paciente", "Observação",
 ]
 COLUNAS_HISTORICO: Final = [
     "Data Hora", "Tipo", "Medicamento", "Quantidade", "Observação",
