@@ -17,7 +17,7 @@ def mostrar_toast_pendente():
         st.toast(texto, icon=icone)
 
 
-st.markdown('<h1 class="page-title">🧴 Cadastrar Material</h1>', unsafe_allow_html=True)
+st.markdown('<h1 class="page-title">🧴 Materiais</h1>', unsafe_allow_html=True)
 
 mostrar_toast_pendente()
 

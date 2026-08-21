@@ -9,16 +9,15 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
 load_css()
 
 pages = [
     st.Page("pages/home.py",                   title="Página Inicial",       icon="🏠", default=True),
     st.Page("pages/dashboard.py",              title="Dashboard",             icon="📊"),
-    st.Page("pages/estoque.py",                title="Estoque",               icon="📦"),
+    st.Page("pages/estoque.py",                title="Estoque Geral",               icon="📦"),
     st.Page("pages/estoque_materiais.py",      title="Estoque de Materiais",  icon="🧴"),
-    st.Page("pages/cadastrar_medicamento.py",  title="Cadastrar Medicamento", icon="➕"),
-    st.Page("pages/cadastrar_material.py",     title="Cadastrar Material",     icon="🧴"),
+    st.Page("pages/cadastrar_medicamento.py",  title="Medicamentos", icon="➕"),
+    st.Page("pages/cadastrar_material.py",     title="Materiais",     icon="🧴"),
     st.Page("pages/registrar_aplicacao.py",    title="Registrar Aplicação",   icon="💉"),
     st.Page("pages/historico.py",              title="Histórico",             icon="📜"),
     st.Page("pages/alertas.py",                title="Alertas",               icon="⚠️"),
@@ -32,9 +31,9 @@ pg = st.navigation(pages, position="hidden")
 nav_items = [
     ("pages/home.py", "🏠 Página Inicial"),
     ("pages/dashboard.py", "📊 Dashboard"),
-    ("pages/estoque.py", "📦 Estoque"),
-    ("pages/cadastrar_medicamento.py", "➕ Cadastrar Medicamento"),
-    ("pages/cadastrar_material.py", "🧴 Cadastrar Material"),
+    ("pages/estoque.py", "📦 Estoque Geral"),
+    ("pages/cadastrar_medicamento.py", "➕ Medicamentos"),
+    ("pages/cadastrar_material.py", "🧴 Materiais"),
     ("pages/registrar_aplicacao.py", "💉 Registrar Aplicação"),
     ("pages/historico.py", "📜 Histórico"),
     ("pages/alertas.py", "⚠️ Alertas"),
