@@ -13,14 +13,6 @@ from services.aplicacao_service import registrar_aplicacao
 from services.sheets_service import ler_registro_diario
 from utils.helpers import formatar_data_hora
 
-
-def proximo_id_registro() -> int:
-    registros = ler_registro_diario()
-    if registros.empty or "ID" not in registros.columns:
-        return 1
-    ids = pd.to_numeric(registros["ID"], errors="coerce").dropna()
-    return int(ids.max()) + 1 if not ids.empty else 1
-
 st.markdown('<h1 class="page-title">💉 Registrar Aplicação</h1>', unsafe_allow_html=True)
 
 medicamentos = get_medicamentos_list()
@@ -36,7 +28,7 @@ st.markdown('<div class="section-header">Dados da Aplicação</div>', unsafe_all
 
 c0, c1, c2 = st.columns([1, 2, 2])
 with c0:
-    st.text_input("ID", value=str(proximo_id_registro()), disabled=True, key="aplicacao_id")
+    st.empty()
 with c1:
     med_sel = st.selectbox("Medicamento *", options=medicamentos, key="aplicacao_medicamento")
 with c2:
@@ -61,9 +53,6 @@ if material_sel != "Nenhum":
         st.session_state["aplicacao_lote_material"] = lotes_material[0] if lotes_material else "—"
     lote_material_sel = st.selectbox("Lote do Material *", options=lotes_material if lotes_material else ["—"], key="aplicacao_lote_material")
     qtd_material_disponivel = get_quantidade_disponivel_material(material_sel, lote_material_sel) if lote_material_sel != "—" else 0
-    tipo_material = st.text_input("Tipo do Material", placeholder="Tipo ou categoria do material")
-else:
-    tipo_material = ""
 
 qtd_disponivel = get_quantidade_disponivel(med_sel, lote_sel) if lote_sel != "—" else 0
 st.markdown(
@@ -127,7 +116,6 @@ if btn_registrar:
                 material=material_sel if material_sel != "Nenhum" else None,
                 lote_material=lote_material_sel if material_sel != "Nenhum" else None,
                 quantidade_material=int(qtd_material),
-                tipo_material=tipo_material.strip(),
                 aplicador=aplicador.strip(),
                 paciente=paciente.strip(),
                 observacao=observacao.strip(),
@@ -135,6 +123,7 @@ if btn_registrar:
             )
         if ok:
             st.success(msg)
+            st.toast("Aplicação registrada e estoque atualizado.", icon="✅")
             novo_disponivel = get_quantidade_disponivel(med_sel, lote_sel)
             st.info(f"Estoque atual de **{med_sel}** (Lote {lote_sel}): **{novo_disponivel}** unidade(s)")
             if material_sel != "Nenhum":
@@ -142,6 +131,7 @@ if btn_registrar:
                 st.info(f"Estoque atual de **{material_sel}** (Lote {lote_material_sel}): **{novo_material}** unidade(s)")
         else:
             st.error(msg)
+            st.toast(msg, icon="⚠️")
 
 st.markdown('<div class="section-header">Últimas aplicações</div>', unsafe_allow_html=True)
 recentes = ler_registro_diario()
@@ -149,9 +139,15 @@ if recentes.empty:
     st.info("Nenhuma aplicação registrada ainda.")
 else:
     recentes = recentes.sort_values("Data Hora", ascending=False, na_position="last")
+    recentes["_ordem_data"] = pd.to_datetime(
+        recentes["Data Hora"].astype(str),
+        format="%d/%m/%Y %H:%M:%S",
+        errors="coerce",
+    )
+    recentes = recentes.sort_values("_ordem_data", ascending=False, na_position="last")
     exibir = recentes[[
         "ID", "Data Hora", "Medicamento", "Lote", "Quantidade Medicamento",
-        "Quantidade Material", "Material", "Lote Material", "Tipo Material",
+        "Quantidade Material", "Material", "Lote Material",
         "Aplicador", "Paciente", "Observação",
     ]].head(10).copy()
     st.dataframe(exibir, use_container_width=True, hide_index=True)

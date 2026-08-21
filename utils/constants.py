@@ -12,7 +12,7 @@ COLUNAS_MATERIAIS: Final = [
 COLUNAS_REGISTRO: Final = [
     "ID", "Data Hora", "Medicamento", "Lote", "Quantidade",
     "Quantidade Medicamento", "Quantidade Material", "Material", "Lote Material",
-    "Tipo Material", "Aplicador", "Paciente", "Observação",
+    "Aplicador", "Paciente", "Observação",
 ]
 COLUNAS_HISTORICO: Final = [
     "Data Hora", "Tipo", "Medicamento", "Quantidade", "Observação",

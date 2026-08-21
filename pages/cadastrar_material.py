@@ -7,6 +7,7 @@ from services.estoque_service import (
     get_unidades_materiais_from_sheet,
 )
 from services.sheets_service import adicionar_material, atualizar_material, auditar_alteracao, excluir_material
+from utils.helpers import formatar_data_hora
 
 st.markdown('<h1 class="page-title">🧴 Cadastrar Material</h1>', unsafe_allow_html=True)
 
@@ -88,6 +89,7 @@ with tab_cad:
                     "Quantidade": int(qtd),
                     "Unidade de Medida": unidade,
                     "Lote": lote,
+                    "Data de Inserção": formatar_data_hora(),
                     "Data de Vencimento": validade.strftime("%d/%m/%Y") if isinstance(validade, date) else str(validade),
                     "Observação": obs,
                 })
@@ -100,6 +102,7 @@ with tab_cad:
             get_materiais.clear()
             if sucesso == len(registros):
                 st.success(f"✅ {sucesso} material(is) cadastrado(s) com sucesso!")
+                st.toast(f"{sucesso} material(is) cadastrado(s).", icon="✅")
                 st.session_state.mat_ids = [0]
                 st.session_state.mat_counter = 0
                 for k in [k for k in list(st.session_state.keys()) if k.startswith("mat_")]:

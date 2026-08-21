@@ -293,15 +293,40 @@ if _GSPREAD_AVAILABLE:
             aliases = {
                 "id": "ID",
                 "nome do material": "Material",
+                "nome material": "Material",
                 "material": "Material",
                 "lote do material": "Lote",
                 "lote material": "Lote",
                 "lote": "Lote",
                 "quantidade": "Quantidade",
+                "unidade": "Unidade de Medida",
+                "unidade medida": "Unidade de Medida",
+                "unidade de medida": "Unidade de Medida",
+                "vencimento": "Data de Vencimento",
+                "data vencimento": "Data de Vencimento",
+                "data de vencimento": "Data de Vencimento",
+                "validade": "Data de Vencimento",
+                "data validade": "Data de Vencimento",
+                "dias vencer": "Dias para Vencer",
+                "dias para vencer": "Dias para Vencer",
+                "dias p vencer": "Dias para Vencer",
                 "tipo": "Tipo",
+                "observacao": "Observação",
+                "observacoes": "Observação",
+                "observacao opcional": "Observação",
+                "usuario": "Usuário que Registrou",
+                "usuario que registrou": "Usuário que Registrou",
+                "data insercao": "Data de Inserção",
+                "data de insercao": "Data de Inserção",
             }
+            def canonical_header(header: object) -> str:
+                normalized = unicodedata.normalize("NFKD", str(header).strip().rstrip(":"))
+                normalized = normalized.encode("ascii", "ignore").decode().lower()
+                normalized = re.sub(r"[^a-z0-9]+", " ", normalized).strip()
+                return aliases.get(normalized, str(header).strip())
+
             normalized_headers = [
-                aliases.get(str(header).strip().lower().rstrip(":"), header)
+                canonical_header(header)
                 for header in headers
             ]
             data_rows = all_rows[1:]
@@ -370,6 +395,8 @@ if _GSPREAD_AVAILABLE:
                         record[header] = row[index] if index < len(row) else ""
                     elif header and index < len(row) and str(row[index]).strip():
                         record[header] = row[index]
+                if not any(str(record.get(field, "")).strip() for field in ("ID", "Data Hora", "Medicamento")):
+                    continue
                 records.append(record)
             df = pd.DataFrame(records) if records else pd.DataFrame(columns=COLUNAS_REGISTRO)
             return _ensure_cols(df, COLUNAS_REGISTRO)
@@ -465,6 +492,7 @@ if _GSPREAD_AVAILABLE:
             new_row = [''] * ncols
             for idx in range(ncols):
                 canon = col_map.get(idx)
+                header_text = str(headers[idx] if idx < len(headers) else "").lower()
                 if canon:
                     if canon in ("Dias para Vencer", "Status"):
                         new_row[idx] = ''
@@ -477,6 +505,8 @@ if _GSPREAD_AVAILABLE:
                         new_row[idx] = formatar_data_hora()
                     else:
                         new_row[idx] = dados.get(canon, '')
+                if "inser" in header_text and ("data" in header_text or "dia" in header_text):
+                    new_row[idx] = formatar_data_hora()
 
                 header_name = headers[idx] if idx < len(headers) else ""
                 norm_header = str(header_name).strip().lower()
