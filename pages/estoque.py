@@ -64,6 +64,12 @@ def gerar_pdf_estoque(dataframe: pd.DataFrame, titulo: str) -> bytes:
 
 st.markdown('<h1 class="page-title">📦 Estoque de Medicamento</h1>', unsafe_allow_html=True)
 
+st.page_link(
+    "pages/estoque_materiais.py",
+    label="🧴 Abrir Estoque de Materiais",
+    icon="🧴",
+)
+
 df = get_estoque()
 if df.empty:
     st.info("Nenhum medicamento cadastrado. Acesse **Cadastrar Medicamento** para começar.")

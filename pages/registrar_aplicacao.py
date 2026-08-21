@@ -9,7 +9,7 @@ from services.estoque_service import (
     get_lotes_por_material,
     get_quantidade_disponivel_material,
 )
-from services.aplicacao_service import registrar_aplicacao
+from services.aplicacao_service import registrar_aplicacao, proximo_id_registro
 from services.sheets_service import ler_registro_diario
 from utils.helpers import formatar_data_hora
 
@@ -26,23 +26,41 @@ if not medicamentos:
 
 st.markdown('<div class="section-header">Dados da Aplicação</div>', unsafe_allow_html=True)
 
-c0, c1, c2 = st.columns([1, 2, 2])
-with c0:
-    st.empty()
+id_registro = proximo_id_registro()
+
+c1, c2 = st.columns([1, 1])
+
 with c1:
-    med_sel = st.selectbox("Medicamento *", options=medicamentos, key="aplicacao_medicamento")
+    med_sel = st.selectbox(
+        "Medicamento *",
+        options=medicamentos,
+        key="aplicacao_medicamento",
+    )
+
 with c2:
     lotes = get_lotes_por_medicamento(med_sel)
     lote_atual = st.session_state.get("aplicacao_lote")
+
     if lote_atual not in lotes:
         st.session_state["aplicacao_lote"] = lotes[0] if lotes else "—"
-    lote_sel = st.selectbox("Lote do Medicamento *", options=lotes if lotes else ["—"], key="aplicacao_lote")
+
+    lote_sel = st.selectbox(
+        "Lote do Medicamento *",
+        options=lotes if lotes else ["—"],
+        key="aplicacao_lote",
+    )
 
 c3, c4 = st.columns(2)
 with c3:
     material_sel = st.selectbox("Material", options=["Nenhum"] + materiales, key="aplicacao_material")
 with c4:
-    data_hora_atual = st.text_input("Data/Hora *", value=formatar_data_hora(), disabled=True, key="aplicacao_data_hora")
+    data_hora_informada = st.text_input(
+        "Data/Hora *",
+        value=formatar_data_hora(),
+        disabled=True,
+        key="aplicacao_data_hora",
+    )
+    data_hora = data_hora_informada or formatar_data_hora()
 
 lote_material_sel = "—"
 qtd_material_disponivel = 0
@@ -149,5 +167,5 @@ else:
         "ID", "Data Hora", "Medicamento", "Lote", "Quantidade Medicamento",
         "Quantidade Material", "Material", "Lote Material",
         "Aplicador", "Paciente", "Observação",
-    ]].head(10).copy()
+    ]].head(9).copy()
     st.dataframe(exibir, use_container_width=True, hide_index=True)

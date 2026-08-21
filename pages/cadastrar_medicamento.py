@@ -13,9 +13,24 @@ from services.sheets_service import (
     auditar_alteracao,
     excluir_medicamento,
 )
-from utils.helpers import calcular_dias_para_vencer, calcular_status, formatar_data_hora
+from utils.helpers import (
+    calcular_dias_para_vencer,
+    calcular_status,
+    formatar_data_hora,
+    normalizar_texto,
+)
+
+
+def mostrar_toast_pendente():
+    mensagem = st.session_state.pop("toast_mensagem", None)
+    if mensagem:
+        texto, icone = mensagem
+        st.toast(texto, icon=icone)
+
 
 st.markdown('<h1 class="page-title">➕ Cadastrar Medicamento</h1>', unsafe_allow_html=True)
+
+mostrar_toast_pendente()
 
 tab_cad, tab_edit, tab_del, tab_cons = st.tabs(["📝 Cadastrar", "✏️ Editar", "🗑️ Excluir", "🔎 Consultar"])
 
@@ -114,14 +129,23 @@ with tab_cad:
             sucesso = sum(1 for d in registros if adicionar_medicamento(d))
             get_estoque.clear()
             if sucesso == len(registros):
-                st.success(f"✅ {sucesso} medicamento(s) cadastrado(s) com sucesso!")
+                st.session_state["toast_mensagem"] = (
+                    f"{sucesso} medicamento(s) cadastrado(s) com sucesso!",
+                    "✅",
+                )
                 st.session_state.med_ids = [0]
                 st.session_state.med_counter = 0
+
                 for k in [k for k in list(st.session_state.keys()) if k.startswith("m_")]:
                     del st.session_state[k]
+
                 st.rerun()
             else:
-                st.error(f"{len(registros) - sucesso} medicamento(s) não puderam ser cadastrados.")
+                st.session_state["toast_mensagem"] = (
+                    f"{len(registros) - sucesso} medicamento(s) não puderam ser cadastrados.",
+                    "❌",
+                )
+                st.rerun()
 
 # ── EDITAR ─────────────────────────────────────────────────────────────────────
 with tab_edit:
@@ -188,55 +212,166 @@ with tab_edit:
                     for campo, valor_novo in dados.items():
                         valor_anterior = str(row.get(campo, ""))
                         if valor_anterior != str(valor_novo):
-                            auditar_alteracao("Medicamentos", f"{selecionado_nome} - Lote {selecionado_lote}", campo, valor_anterior, valor_novo, justificativa.strip(), usuario.strip())
+                            auditar_alteracao(
+                                "Medicamentos",
+                                f"{selecionado_nome} - Lote {selecionado_lote}",
+                                campo,
+                                valor_anterior,
+                                valor_novo,
+                                justificativa.strip(),
+                                usuario.strip(),
+                            )
+
                     get_estoque.clear()
-                    st.success("✅ Medicamento atualizado com sucesso!")
+                    st.session_state["toast_mensagem"] = (
+                        "Medicamento atualizado com sucesso!",
+                        "✅",
+                    )
+                    st.rerun()
+                else:
+                    st.session_state["toast_mensagem"] = (
+                        "Não foi possível atualizar o medicamento.",
+                        "❌",
+                    )
                     st.rerun()
 
 # ── EXCLUIR ────────────────────────────────────────────────────────────────────
 with tab_del:
-    st.markdown('<div class="section-header">Excluir Medicamento</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-header">Excluir Medicamentos</div>',
+        unsafe_allow_html=True,
+    )
+
     df2 = get_estoque()
 
     if df2.empty:
         st.info("Nenhum medicamento cadastrado.")
     else:
-        nomes = get_medicamentos_list()
-        sel_nome = st.selectbox("Selecione o nome do medicamento", options=nomes, key="sel_del_nome")
-        lotes = get_lotes_por_medicamento(sel_nome) if sel_nome else []
-        sel_lote = st.selectbox("Selecione o lote", options=lotes, key="sel_del_lote")
+        busca_exclusao = st.text_input(
+            "🔍 Buscar medicamento para a Exclusão:",
+            placeholder="Digite o nome do medicamento...",
+            key="busca_exclusao_medicamento",
+        )
 
-        mask = (df2["Medicamento"] == sel_nome) & (df2["Lote"] == sel_lote)
-        if not mask.any():
-            st.info("Selecione um medicamento e lote válidos para exclusão.")
+        termo = normalizar_texto(busca_exclusao)
+
+        filtro = df2["Medicamento"].map(normalizar_texto).str.contains(
+            termo,
+            regex=False,
+            na=False,
+        )
+        df2 = df2[filtro].copy()
+
+        if df2.empty:
+            st.info("Nenhum medicamento encontrado.")
             st.stop()
 
-        row_del = df2[mask].iloc[0]
-        sheet_row_del = int(row_del['_sheet_row'])
+        tabela_exclusao = df2.drop(
+            columns=["_sheet_row"],
+            errors="ignore",
+        ).copy()
 
-        st.warning(f"⚠️ Tem certeza que deseja excluir **{sel_nome} — Lote: {sel_lote}**? Esta ação não pode ser desfeita.")
-        st.markdown("**Registro selecionado para exclusão**")
-        st.dataframe(row_del.drop(labels=['_sheet_row'], errors='ignore').to_frame().T, width='stretch', hide_index=True)
-        usuario_del = st.text_input("Usuário responsável *", key="del_med_usuario")
-        justificativa_del = st.text_area("Justificativa obrigatória *", key="del_med_justificativa", placeholder="Descreva a razão da exclusão.")
+        tabela_exclusao.insert(0, "Selecionar", False)
 
-        col_btn, _ = st.columns([1, 3])
-        with col_btn:
-            if st.button("🗑️ Confirmar Exclusão", key="btn_del"):
-                if not usuario_del.strip() or not justificativa_del.strip():
-                    st.error("Usuário responsável e justificativa são obrigatórios.")
-                elif excluir_medicamento(sheet_row_del):
-                    auditar_alteracao("Medicamentos", f"{sel_nome} - Lote {sel_lote}", "Registro", str(row_del.drop(labels=['_sheet_row'], errors='ignore').to_dict()), "Excluído", justificativa_del.strip(), usuario_del.strip())
-                    get_estoque.clear()
-                    st.session_state["ultimo_medicamento_excluido"] = f"{sel_nome} - Lote {sel_lote}"
-                    st.success("✅ Medicamento excluído com sucesso!")
-                    st.rerun()
+        tabela_editada = st.data_editor(
+            tabela_exclusao,
+            hide_index=True,
+            width="stretch",
+            disabled=[
+                coluna for coluna in tabela_exclusao.columns
+                if coluna != "Selecionar"
+            ],
+            column_config={
+                "Selecionar": st.column_config.CheckboxColumn(
+                    "Excluir",
+                    help="Marque os medicamentos que deseja excluir",
+                    default=False,
+                ),
+            },
+            key="tabela_selecao_medicamentos",
+        )
 
-        if st.session_state.get("ultimo_medicamento_excluido"):
-            st.success(f"Tabela atualizada após a exclusão de {st.session_state['ultimo_medicamento_excluido']}.")
-            tabela_atual = get_estoque().drop(columns=['_sheet_row'], errors='ignore')
-            st.dataframe(tabela_atual, width='stretch', hide_index=True)
-            del st.session_state["ultimo_medicamento_excluido"]
+        selecionados = tabela_editada[tabela_editada["Selecionar"]]
+
+        st.write(f"{len(selecionados)} medicamento(s) selecionado(s).")
+
+        usuario_del = st.text_input(
+            "Usuário responsável *",
+            value="Stephanny",
+            key="del_med_usuario",
+        )
+
+        justificativa_del = st.text_area(
+            "Justificativa obrigatória *",
+            placeholder="Descreva a razão da exclusão.",
+            key="del_med_justificativa",
+        )
+
+        if st.button(
+            "🗑️ Excluir selecionados",
+            type="primary",
+            key="btn_del_selecionados",
+        ):
+            if selecionados.empty:
+                st.error("Selecione pelo menos um medicamento na tabela.")
+            elif not usuario_del.strip():
+                st.error("Informe o usuário responsável.")
+            elif not justificativa_del.strip():
+                st.error("A justificativa é obrigatória.")
+            else:
+                excluidos = 0
+                falhas = 0
+
+                linhas_para_excluir = []
+
+                for indice in selecionados.index:
+                    linha_original = df2.loc[indice]
+                    linhas_para_excluir.append(linha_original)
+
+                # Exclui de baixo para cima para preservar os números das linhas
+                linhas_para_excluir.sort(
+                    key=lambda linha: int(linha["_sheet_row"]),
+                    reverse=True,
+                )
+
+                for linha in linhas_para_excluir:
+                    sheet_row = int(linha["_sheet_row"])
+                    nome = str(linha.get("Medicamento", ""))
+                    lote = str(linha.get("Lote", ""))
+
+                    if excluir_medicamento(sheet_row):
+                        auditar_alteracao(
+                            "Medicamentos",
+                            f"{nome} - Lote {lote}",
+                            "Registro",
+                            str(
+                                linha.drop(
+                                    labels=["_sheet_row"],
+                                    errors="ignore",
+                                ).to_dict()
+                            ),
+                            "Excluído",
+                            justificativa_del.strip(),
+                            usuario_del.strip(),
+                        )
+                        excluidos += 1
+                    else:
+                        falhas += 1
+
+                get_estoque.clear()
+
+                if falhas == 0:
+                    st.session_state["toast_mensagem"] = (
+                        f"{excluidos} medicamento(s) excluído(s) com sucesso!",
+                        "✅",
+                    )
+                else:
+                    st.session_state["toast_mensagem"] = (
+                        f"{excluidos} excluído(s) e {falhas} não puderam ser excluído(s).",
+                        "⚠️",
+                    )
+
+                st.rerun()
 
 # ── CONSULTAR ──────────────────────────────────────────────────────────────────
 with tab_cons:
@@ -258,21 +393,60 @@ with tab_cons:
             default=[campo for campo in ["Medicamento", "Lote"] if campo in campos_disponiveis],
             key="campos_cons",
         )
-        pesq = st.text_input("🔍 Termo de pesquisa", placeholder="Ex.: Lidocaína, 000513, AMP...", key="pesq_cons")
+        pesq = st.text_input(
+            "🔍 Termo de pesquisa",
+            placeholder="Ex.: Lidocaína, 000513, AMP...",
+            key="pesq_cons",
+        )
+
         filtro1, filtro2 = st.columns(2)
+
         with filtro1:
-            qtd_min = st.number_input("Quantidade mínima", min_value=0, value=0, step=1, key="qtd_min_cons")
+            qtd_min = st.number_input(
+                "Quantidade mínima",
+                min_value=0,
+                value=0,
+                step=1,
+                key="qtd_min_cons",
+            )
+
         with filtro2:
-            qtd_max = st.number_input("Quantidade máxima", min_value=0, value=0, step=1, key="qtd_max_cons", help="Use 0 para não limitar.")
-        if pesq and campos_pesquisa:
+            qtd_max = st.number_input(
+                "Quantidade máxima",
+                min_value=0,
+                value=0,
+                step=1,
+                key="qtd_max_cons",
+                help="Use 0 para não limitar.",
+            )
+
+        if pesq.strip() and campos_pesquisa:
+            termo = normalizar_texto(pesq)
             mask = pd.Series(False, index=df_cons.index)
+
             for campo in campos_pesquisa:
-                mask |= df_cons[campo].astype(str).str.contains(pesq, case=False, na=False)
+                mask |= df_cons[campo].map(
+                    normalizar_texto
+                ).str.contains(
+                    termo,
+                    regex=False,
+                    na=False,
+                )
+
             df_cons = df_cons[mask]
+
         if "Quantidade" in df_cons.columns:
-            quantidades = pd.to_numeric(df_cons["Quantidade"].astype(str).str.replace(",", ".", regex=False), errors="coerce").fillna(0)
+            quantidades = pd.to_numeric(
+                df_cons["Quantidade"]
+                .astype(str)
+                .str.replace(",", ".", regex=False),
+                errors="coerce",
+            ).fillna(0)
+
             df_cons = df_cons[quantidades >= qtd_min]
+
             if qtd_max > 0:
                 df_cons = df_cons[quantidades <= qtd_max]
+
         st.caption(f"{len(df_cons)} registro(s) encontrado(s)")
         st.dataframe(df_cons, width='stretch', hide_index=True)

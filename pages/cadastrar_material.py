@@ -7,9 +7,19 @@ from services.estoque_service import (
     get_unidades_materiais_from_sheet,
 )
 from services.sheets_service import adicionar_material, atualizar_material, auditar_alteracao, excluir_material
-from utils.helpers import formatar_data_hora
+from utils.helpers import formatar_data_hora, normalizar_texto
+
+
+def mostrar_toast_pendente():
+    mensagem = st.session_state.pop("toast_mensagem", None)
+    if mensagem:
+        texto, icone = mensagem
+        st.toast(texto, icon=icone)
+
 
 st.markdown('<h1 class="page-title">🧴 Cadastrar Material</h1>', unsafe_allow_html=True)
+
+mostrar_toast_pendente()
 
 tab_cad, tab_edit, tab_del, tab_cons = st.tabs(["📝 Cadastrar", "✏️ Editar", "🗑️ Excluir", "🔎 Consultar"])
 
@@ -101,15 +111,21 @@ with tab_cad:
             sucesso = sum(1 for d in registros if adicionar_material(d))
             get_materiais.clear()
             if sucesso == len(registros):
-                st.success(f"✅ {sucesso} material(is) cadastrado(s) com sucesso!")
-                st.toast(f"{sucesso} material(is) cadastrado(s).", icon="✅")
+                st.session_state["toast_mensagem"] = (
+                    f"{sucesso} material(is) cadastrado(s) com sucesso!",
+                    "✅",
+                )
                 st.session_state.mat_ids = [0]
                 st.session_state.mat_counter = 0
                 for k in [k for k in list(st.session_state.keys()) if k.startswith("mat_")]:
                     del st.session_state[k]
                 st.rerun()
             else:
-                st.error(f"{len(registros) - sucesso} material(is) não puderam ser cadastrados.")
+                st.session_state["toast_mensagem"] = (
+                    f"{len(registros) - sucesso} material(is) não puderam ser cadastrados.",
+                    "❌",
+                )
+                st.rerun()
 
 with tab_edit:
     st.markdown('<div class="section-header">Editar Material</div>', unsafe_allow_html=True)
@@ -176,38 +192,158 @@ with tab_edit:
                         if valor_anterior != str(valor_novo):
                             auditar_alteracao("Materiais", f"{sel_nome} - Lote {sel_lote}", campo, valor_anterior, valor_novo, justificativa.strip(), usuario_auditoria.strip())
                     get_materiais.clear()
-                    st.success("✅ Material atualizado com sucesso!")
+                    st.session_state["toast_mensagem"] = (
+                        "Material atualizado com sucesso!",
+                        "✅",
+                    )
+                    st.rerun()
+                else:
+                    st.session_state["toast_mensagem"] = (
+                        "Não foi possível atualizar o material.",
+                        "❌",
+                    )
                     st.rerun()
 
 with tab_del:
-    st.markdown('<div class="section-header">Excluir Material</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-header">Excluir Materiais</div>',
+        unsafe_allow_html=True,
+    )
+
     df2 = get_materiais()
+
     if df2.empty:
         st.info("Nenhum material cadastrado.")
     else:
-        nomes = get_materiales_list()
-        sel_nome = st.selectbox("Selecione o material", options=nomes, key="sel_del_mat_nome")
-        lotes = get_lotes_por_material(sel_nome) if sel_nome else []
-        sel_lote = st.selectbox("Selecione o lote", options=lotes, key="sel_del_mat_lote")
-        mask = (df2["Material"] == sel_nome) & (df2["Lote"] == sel_lote)
-        if not mask.any():
-            st.info("Selecione um material e lote válidos para exclusão.")
+        busca_exclusao = st.text_input(
+            "🔍 Buscar material para exclusão",
+            placeholder="Digite o nome do material...",
+            key="busca_exclusao_material",
+        )
+
+        if busca_exclusao.strip():
+            termo = normalizar_texto(busca_exclusao)
+            filtro = df2["Material"].map(normalizar_texto).str.contains(
+                termo,
+                regex=False,
+                na=False,
+            )
+            df2 = df2[filtro].copy()
+
+        if df2.empty:
+            st.info("Nenhum material encontrado.")
             st.stop()
-        row_del = df2[mask].iloc[0]
-        sheet_row_del = int(row_del.get('_sheet_row', 2))
-        st.warning(f"⚠️ Tem certeza que deseja excluir **{sel_nome} — Lote: {sel_lote}**?")
-        usuario_del = st.text_input("Usuário responsável *", key="del_mat_usuario")
-        justificativa_del = st.text_area("Justificativa obrigatória *", key="del_mat_justificativa", placeholder="Descreva a razão da exclusão.")
-        col_btn, _ = st.columns([1, 3])
-        with col_btn:
-            if st.button("🗑️ Confirmar Exclusão", key="btn_del_mat"):
-                if not usuario_del.strip() or not justificativa_del.strip():
-                    st.error("Usuário responsável e justificativa são obrigatórios.")
-                elif excluir_material(sheet_row_del):
-                    auditar_alteracao("Materiais", f"{sel_nome} - Lote {sel_lote}", "Registro", str(row_del.drop(labels=['_sheet_row'], errors='ignore').to_dict()), "Excluído", justificativa_del.strip(), usuario_del.strip())
-                    get_materiais.clear()
-                    st.success("✅ Material excluído com sucesso!")
-                    st.rerun()
+
+        tabela_exclusao = df2.drop(
+            columns=["_sheet_row"],
+            errors="ignore",
+        ).copy()
+
+        tabela_exclusao.insert(0, "Selecionar", False)
+
+        tabela_editada = st.data_editor(
+            tabela_exclusao,
+            hide_index=True,
+            width="stretch",
+            disabled=[
+                coluna
+                for coluna in tabela_exclusao.columns
+                if coluna != "Selecionar"
+            ],
+            column_config={
+                "Selecionar": st.column_config.CheckboxColumn(
+                    "Excluir",
+                    help="Marque os materiais que deseja excluir",
+                    default=False,
+                ),
+            },
+            key="tabela_selecao_materiais",
+        )
+
+        selecionados = tabela_editada[
+            tabela_editada["Selecionar"]
+        ]
+
+        st.write(
+            f"{len(selecionados)} material(is) selecionado(s)."
+        )
+
+        usuario_del = st.text_input(
+            "Usuário responsável *",
+            value="Stephanny",
+            key="del_mat_usuario",
+        )
+
+        justificativa_del = st.text_area(
+            "Justificativa obrigatória *",
+            placeholder="Descreva a razão da exclusão.",
+            key="del_mat_justificativa",
+        )
+
+        if st.button(
+            "🗑️ Excluir selecionados",
+            type="primary",
+            key="btn_del_mat_selecionados",
+        ):
+            if selecionados.empty:
+                st.error("Selecione pelo menos um material na tabela.")
+            elif not usuario_del.strip():
+                st.error("Informe o usuário responsável.")
+            elif not justificativa_del.strip():
+                st.error("A justificativa é obrigatória.")
+            else:
+                excluidos = 0
+                falhas = 0
+
+                linhas_para_excluir = [
+                    df2.loc[indice]
+                    for indice in selecionados.index
+                ]
+
+                linhas_para_excluir.sort(
+                    key=lambda linha: int(linha["_sheet_row"]),
+                    reverse=True,
+                )
+
+                for linha in linhas_para_excluir:
+                    sheet_row = int(linha["_sheet_row"])
+                    nome = str(linha.get("Material", ""))
+                    lote = str(linha.get("Lote", ""))
+
+                    if excluir_material(sheet_row):
+                        auditar_alteracao(
+                            "Materiais",
+                            f"{nome} - Lote {lote}",
+                            "Registro",
+                            str(
+                                linha.drop(
+                                    labels=["_sheet_row"],
+                                    errors="ignore",
+                                ).to_dict()
+                            ),
+                            "Excluído",
+                            justificativa_del.strip(),
+                            usuario_del.strip(),
+                        )
+                        excluidos += 1
+                    else:
+                        falhas += 1
+
+                get_materiais.clear()
+
+                if falhas == 0:
+                    st.session_state["toast_mensagem"] = (
+                        f"{excluidos} material(is) excluído(s) com sucesso!",
+                        "✅",
+                    )
+                else:
+                    st.session_state["toast_mensagem"] = (
+                        f"{excluidos} excluído(s) e "
+                        f"{falhas} não puderam ser excluído(s).",
+                        "⚠️",
+                    )
+
+                st.rerun()
 
 with tab_cons:
     st.markdown('<div class="section-header">Consultar Material</div>', unsafe_allow_html=True)
@@ -217,8 +353,17 @@ with tab_cons:
     else:
         pesq = st.text_input("🔍 Pesquisar", placeholder="Material, lote...", key="pesq_cons_mat")
         df_cons = df3.drop(columns=['_sheet_row'], errors='ignore').copy()
-        if pesq:
-            mask = df_cons["Material"].astype(str).str.contains(pesq, case=False, na=False)
-            mask |= df_cons["Lote"].astype(str).str.contains(pesq, case=False, na=False)
+        if pesq.strip():
+            termo = normalizar_texto(pesq)
+            mask = df_cons["Material"].map(normalizar_texto).str.contains(
+                termo,
+                regex=False,
+                na=False,
+            )
+            mask |= df_cons["Lote"].map(normalizar_texto).str.contains(
+                termo,
+                regex=False,
+                na=False,
+            )
             df_cons = df_cons[mask]
         st.dataframe(df_cons, width='stretch', hide_index=True)

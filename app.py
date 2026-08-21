@@ -4,7 +4,7 @@ import streamlit.components.v1 as components
 from utils.helpers import load_css
 
 st.set_page_config(
-    page_title="Controle de Medicamentos",
+    page_title="Controle de Enfermagem",
     page_icon="💊",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -33,7 +33,6 @@ nav_items = [
     ("pages/home.py", "🏠 Página Inicial"),
     ("pages/dashboard.py", "📊 Dashboard"),
     ("pages/estoque.py", "📦 Estoque"),
-    ("pages/estoque_materiais.py", "🧴 Estoque de Materiais"),
     ("pages/cadastrar_medicamento.py", "➕ Cadastrar Medicamento"),
     ("pages/cadastrar_material.py", "🧴 Cadastrar Material"),
     ("pages/registrar_aplicacao.py", "💉 Registrar Aplicação"),
@@ -90,9 +89,9 @@ try:
     if Path('assets/logo.png').exists():
         links_html.append('<div class="logo"><img src="assets/logo.png" height="36"/></div>')
     else:
-        links_html.append('<div class="logo">💊 Controle de Medicamentos</div>')
+        links_html.append('<div class="logo">💊 Controle de Enfermagem</div>')
 except Exception:
-    links_html.append('<div class="logo">💊 Controle de Medicamentos</div>')
+    links_html.append('<div class="logo">💊 Controle de Enfermagem</div>')
 
 for path, label in nav_items:
     links_html.append(f'<a class="nav-link" href="?page={path}" data-page="{path}" target="_self">{label}</a>')
