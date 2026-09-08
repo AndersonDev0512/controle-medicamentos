@@ -19,9 +19,7 @@ pages = [
     st.Page("pages/cadastrar_medicamento.py",  title="Medicamentos", icon="➕"),
     st.Page("pages/cadastrar_material.py",     title="Materiais",     icon="🧴"),
     st.Page("pages/registrar_aplicacao.py",    title="Registrar Aplicação",   icon="💉"),
-    st.Page("pages/historico.py",              title="Histórico",             icon="📜"),
-    st.Page("pages/alertas.py",                title="Alertas",               icon="⚠️"),
-    st.Page("pages/configuracoes.py",          title="Configurações",         icon="⚙️"),
+    st.Page("pages/historico.py",              title="Relatórios",            icon="📊"),
     st.Page("pages/debug.py",                  title="Debug",                 icon="🐞"),
 ]
 
@@ -34,10 +32,8 @@ nav_items = [
     ("pages/estoque.py", "📦 Estoque Geral"),
     ("pages/cadastrar_medicamento.py", "➕ Medicamentos"),
     ("pages/cadastrar_material.py", "🧴 Materiais"),
-    ("pages/registrar_aplicacao.py", "💉 Registrar Aplicação"),
-    ("pages/historico.py", "📜 Histórico"),
-    ("pages/alertas.py", "⚠️ Alertas"),
-    ("pages/configuracoes.py", "⚙️ Configurações"),
+    ("pages/registrar_aplicacao.py", "💉 Aplicações"),
+    ("pages/historico.py", "📊 Relatórios"),
 ]
 
 # CSS for top nav (fixed) and spacing for main content

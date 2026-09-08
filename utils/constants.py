@@ -1,35 +1,110 @@
 from typing import Final
 
 COLUNAS_ESTOQUE: Final = [
-    "ID", "Medicamento", "Usuário que Registrou", "Data de Inserção", "Quantidade", "Unidade de Medida", "Lote",
-    "Data de Vencimento", "Dias para Vencer", "Status", "Observações",
+    "ID",
+    "Medicamento",
+    "Usuário que Registrou",
+    "Data de Inserção",
+    "Quantidade",
+    "Unidade de Medida",
+    "Quantidade Fechada",
+    "Saldo Aberto",
+    "Volume por Unidade",
+    "Unidade Fracionada",
+    "Unidade de Consumo",
+    "Fracionamento JSON",
+    "Lote",
+    "Data de Vencimento",
+    "Dias para Vencer",
+    "Status",
+    "Observações",
 ]
+
 COLUNAS_MATERIAIS: Final = [
-    "ID", "Material", "Quantidade", "Unidade de Medida", "Lote",
-    "Data de Vencimento", "Dias para Vencer", "Status", "Observação",
-    "Usuário que Registrou", "Data de Inserção",
+    "ID",
+    "Material",
+    "Quantidade",
+    "Unidade de Medida",
+    "Lote",
+    "Data de Vencimento",
+    "Dias para Vencer",
+    "Status",
+    "Observação",
+    "Usuário que Registrou",
+    "Data de Inserção",
 ]
+
 COLUNAS_REGISTRO: Final = [
-    "ID", "Data Hora", "Medicamento", "Lote", "Quantidade",
-    "Quantidade Medicamento", "Quantidade Material", "Material", "Lote Material",
-    "Aplicador", "Paciente", "Observação",
+    "ID",
+    "Data Hora",
+    "Medicamento",
+    "Lote",
+    "Quantidade",
+    "Quantidade Medicamento",
+    "Quantidade Material",
+    "Material",
+    "Lote Material",
+    "Medicamentos JSON",
+    "Materiais JSON",
+    "Aplicador",
+    "Paciente",
+    "Observação",
 ]
+
 COLUNAS_HISTORICO: Final = [
-    "Data Hora", "Tipo", "Medicamento", "Quantidade", "Observação",
-    "Aplicador", "Paciente", "Material", "Lote Material",
+    "Data Hora",
+    "Tipo",
+    "Medicamento",
+    "Quantidade",
+    "Observação",
+    "Aplicador",
+    "Paciente",
+    "Material",
+    "Lote Material",
 ]
+
 COLUNAS_AUDITORIA: Final = [
-    "ID", "Data", "Hora", "Usuário", "Módulo", "Registro",
-    "Campo Alterado", "Valor Anterior", "Valor Novo",
-    "Justificativa", "Origem",
+    "ID",
+    "Data",
+    "Hora",
+    "Usuário",
+    "Módulo",
+    "Registro",
+    "Campo Alterado",
+    "Valor Anterior",
+    "Valor Novo",
+    "Justificativa",
+    "Origem",
 ]
 
 UNIDADES_MEDIDA: Final = [
-    "Comprimido(s)", "Ampola(s)", "Frasco(s)", "ml", "mg", "g",
-    "Cápsula(s)", "Sache(s)", "Unidade(s)",
+    "Comprimido(s)",
+    "Ampola(s)",
+    "Frasco(s)",
+    "ml",
+    "mg",
+    "g",
+    "Cápsula(s)",
+    "Sache(s)",
+    "Unidade(s)",
 ]
 
-TIPOS_MOVIMENTACAO: Final = ["Entrada", "Saída", "Ajuste"]
+UNIDADES_FRACIONADAS: Final = [
+    "ml",
+    "mg",
+    "g",
+]
+
+OPCOES_UNIDADE_FRACIONADA: Final = [
+    "Não",
+    "Sim",
+]
+
+TIPOS_MOVIMENTACAO: Final = [
+    "Entrada",
+    "Saída",
+    "Ajuste",
+]
 
 STATUS_VENCIDO: Final = "Vencido"
 STATUS_ATENCAO: Final = "Atenção"
@@ -37,12 +112,6 @@ STATUS_PROXIMO: Final = "Próximo"
 STATUS_OK: Final = "OK"
 STATUS_CRITICO: Final = "Crítico"
 
-# Updated thresholds to match requested buckets:
-# dias < 0 -> Vencido
-# dias <= DIAS_CRITICO (15) -> Crítico
-# dias <= DIAS_ATENCAO (89) -> Atenção
-# dias <= DIAS_PROXIMO (120) -> Próximo
-# else -> OK
 CORES_STATUS: Final = {
     STATUS_VENCIDO: "#0f172a",
     STATUS_CRITICO: "#ef4444",

@@ -2,6 +2,7 @@ import streamlit as st
 import plotly.graph_objects as go
 from services.estoque_service import get_estoque
 from services.dashboard_service import get_kpis, get_kpis_materiais
+from services.alerta_service import get_alertas
 from utils.helpers import metric_card, status_label, normalize_status
 
 st.markdown(
@@ -11,6 +12,20 @@ st.markdown(
 
 kpis   = get_kpis()
 kpis_m = get_kpis_materiais()
+alertas = get_alertas()
+
+st.markdown('<div class="section-header">⚠️ Alertas de validade</div>', unsafe_allow_html=True)
+if alertas:
+    for alerta in alertas[:8]:
+        dias = alerta.dias_para_vencer
+        prazo = (
+            f"vencido há {abs(dias)} dia(s)"
+            if dias is not None and dias < 0
+            else f"{dias} dia(s) restantes"
+        )
+        st.warning(f"{alerta.medicamento} | Lote {alerta.lote} | {prazo} | {alerta.status}")
+else:
+    st.success("Nenhum alerta de validade no momento.")
 
 # ── KPI Block: Medicamentos ────────────────────────────────────────────────────
 st.markdown(

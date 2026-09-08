@@ -2,7 +2,11 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 from services.sheets_service import ler_estoque, ler_materiais
-from utils.helpers import calcular_dias_para_vencer, calcular_status, safe_int
+from utils.helpers import (
+    calcular_dias_para_vencer,
+    calcular_status,
+    safe_float,
+)
 from utils.constants import UNIDADES_MEDIDA
 
 
@@ -39,15 +43,55 @@ def get_lotes_por_medicamento(medicamento: str) -> list[str]:
     return df[df["Medicamento"] == medicamento]["Lote"].dropna().unique().tolist()
 
 
-def get_quantidade_disponivel(medicamento: str, lote: str) -> int:
+def get_quantidade_disponivel(
+    medicamento: str,
+    lote: str,
+) -> float:
     df = get_estoque()
+
     if df.empty:
-        return 0
-    mask = (df["Medicamento"] == medicamento) & (df["Lote"] == lote)
-    rows = df[mask]
-    if rows.empty:
-        return 0
-    return int(pd.to_numeric(rows["Quantidade"], errors="coerce").fillna(0).sum())
+        return 0.0
+
+    filtro = (
+        (df["Medicamento"] == medicamento)
+        & (df["Lote"] == lote)
+    )
+
+    linhas = df[filtro]
+
+    if linhas.empty:
+        return 0.0
+
+    total = 0.0
+
+    for _, linha in linhas.iterrows():
+        quantidade = safe_float(
+            linha.get("Quantidade", 0)
+        )
+
+        fracionada = (
+            str(linha.get("Unidade Fracionada", "Não"))
+            .strip()
+            .lower()
+            == "sim"
+        )
+
+        if fracionada:
+            volume = safe_float(
+                linha.get("Volume por Unidade", 0)
+            )
+            saldo_aberto = safe_float(
+                linha.get("Saldo Aberto", 0)
+            )
+
+            if volume > 0:
+                total += (quantidade * volume) + saldo_aberto
+            else:
+                total += quantidade
+        else:
+            total += quantidade
+
+    return round(total, 4)
 
 
 @st.cache_data(ttl=30)

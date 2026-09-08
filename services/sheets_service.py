@@ -1,6 +1,10 @@
 from __future__ import annotations
+import logging
+import json
+import os
 import pandas as pd
 import streamlit as st
+import time
 from typing import Any
 from utils.config import get_config
 from utils.constants import (
@@ -21,6 +25,7 @@ try:
     import gspread
     from google.oauth2.service_account import Credentials
     from gspread.exceptions import APIError, SpreadsheetNotFound
+    from gspread.http_client import BackOffHTTPClient
     _GSPREAD_AVAILABLE = True
 except Exception:
     _GSPREAD_AVAILABLE = False
@@ -29,6 +34,15 @@ _SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.readonly",
 ]
+_CACHE_TTL_SECONDS = int(os.environ.get("SHEETS_CACHE_TTL_SECONDS", "45"))
+_LOGGER = logging.getLogger(__name__)
+_API_METRICS = {
+    "requests": 0,
+    "responses": 0,
+    "errors_429": 0,
+    "total_seconds": 0.0,
+}
+_NEXT_AUDIT_ID: int | None = None
 
 
 def _missing_dependency_msg() -> None:
@@ -39,6 +53,29 @@ def _missing_dependency_msg() -> None:
 
 
 if _GSPREAD_AVAILABLE:
+    class _MetricsBackoffHTTPClient(BackOffHTTPClient):
+        def request(self, *args: Any, **kwargs: Any) -> Any:
+            started_at = time.perf_counter()
+            _API_METRICS["requests"] += 1
+            try:
+                response = super().request(*args, **kwargs)
+                _API_METRICS["responses"] += 1
+                return response
+            except APIError as error:
+                response = getattr(error, "response", None)
+                if getattr(response, "status_code", None) == 429:
+                    _API_METRICS["errors_429"] += 1
+                raise
+            finally:
+                elapsed = time.perf_counter() - started_at
+                _API_METRICS["total_seconds"] += elapsed
+                _LOGGER.info(
+                    "Google Sheets request: %.3fs, requests=%d, errors_429=%d",
+                    elapsed,
+                    _API_METRICS["requests"],
+                    _API_METRICS["errors_429"],
+                )
+
     @st.cache_resource
     def _get_client() -> gspread.Client:
         try:
@@ -87,7 +124,7 @@ if _GSPREAD_AVAILABLE:
 
             info = sanitize_service_account(raw)
             creds = Credentials.from_service_account_info(info, scopes=_SCOPES)
-            return gspread.authorize(creds)
+            return gspread.authorize(creds, http_client=_MetricsBackoffHTTPClient)
         except Exception:
             st.error('Erro ao carregar credenciais da Service Account.')
             st.error(traceback.format_exc())
@@ -129,6 +166,7 @@ if _GSPREAD_AVAILABLE:
             raise
 
 
+    @st.cache_resource
     def _get_ws(aba: str) -> gspread.Worksheet:
         spreadsheet = _get_spreadsheet()
         try:
@@ -161,33 +199,49 @@ if _GSPREAD_AVAILABLE:
 
 
     def _canonical_estoque_column(header: str) -> str | None:
-        text = str(header or '').strip().lower()
-        text = ''.join(ch for ch in text if ch.isalnum() or ch.isspace())
-        text = re.sub(r'\s+', ' ', text)
+        text = str(header or "").strip().lower()
+        text = unicodedata.normalize("NFKD", text)
+        text = text.encode("ascii", "ignore").decode()
+        text = re.sub(r"[^a-z0-9]+", " ", text).strip()
+        text = re.sub(r"\s+", " ", text)
 
         aliases = {
             "id": "ID",
             "medicamento": "Medicamento",
+
             "usuario que registrou": "Usuário que Registrou",
-            "dia de insercao no estoque ou revisao": "Data de Inserção",
-            "data de insercao no estoque ou revisao": "Data de Inserção",
-            "data de inserção no estoque ou revisão": "Data de Inserção",
-            "dia de inserção no estoque ou revisão": "Data de Inserção",
             "data de insercao": "Data de Inserção",
-            "data de inserção": "Data de Inserção",
-            "dia de inserção": "Data de Inserção",
             "dia de insercao": "Data de Inserção",
+            "data de insercao no estoque ou revisao": "Data de Inserção",
+            "dia de insercao no estoque ou revisao": "Data de Inserção",
+
             "quantidade": "Quantidade",
             "unidade de medida": "Unidade de Medida",
+
+            "unidade fracionada": "Unidade Fracionada",
+            "fracionavel": "Unidade Fracionada",
+            "unidade fracionavel": "Unidade Fracionada",
+            "unidade de consumo": "Unidade de Consumo",
+            "unidade consumo": "Unidade de Consumo",
+
+            "saldo aberto": "Saldo Aberto",
+            "quantidade aberta": "Saldo Aberto",
+
+            "volume por unidade": "Volume por Unidade",
+            "volume unidade": "Volume por Unidade",
+
+            "fracionamento json": "Fracionamento JSON",
+            "json fracionamento": "Fracionamento JSON",
+
             "lote": "Lote",
             "data de vencimento": "Data de Vencimento",
             "dias para vencer": "Dias para Vencer",
             "dias p vencer": "Dias para Vencer",
             "status": "Status",
-            "observacoes opcional": "Observações",
-            "observações opcional": "Observações",
+
             "observacoes": "Observações",
-            "observações": "Observações",
+            "observacoes opcional": "Observações",
+            "quantidade fechada": "Quantidade Fechada",
         }
 
         if "inser" in text and ("data" in text or "dia" in text):
@@ -224,12 +278,12 @@ if _GSPREAD_AVAILABLE:
 
 
     # READ
-    @st.cache_data(ttl=30)
+    @st.cache_data(ttl=_CACHE_TTL_SECONDS)
     def ler_estoque() -> pd.DataFrame:
         config = get_config()
         try:
             ws = _get_ws(config.aba_estoque)
-            all_rows = ws.get_all_values()
+            all_rows = ws.get(f"A:{_column_letter(len(COLUNAS_ESTOQUE))}")
             if not all_rows or len(all_rows) < 1:
                 return pd.DataFrame(columns=COLUNAS_ESTOQUE)
 
@@ -281,82 +335,71 @@ if _GSPREAD_AVAILABLE:
             return pd.DataFrame(columns=COLUNAS_ESTOQUE)
 
 
-    @st.cache_data(ttl=30)
+    @st.cache_data(ttl=_CACHE_TTL_SECONDS)
     def ler_materiais() -> pd.DataFrame:
         config = get_config()
         try:
             ws = _get_ws(config.aba_materiais)
-            all_rows = ws.get_all_values()
-            if not all_rows or len(all_rows) < 2:
+            rows = ws.get(f"A:{_column_letter(len(COLUNAS_MATERIAIS))}")
+            if not rows:
                 return pd.DataFrame(columns=COLUNAS_MATERIAIS)
-            headers = all_rows[0]
-            aliases = {
-                "id": "ID",
-                "nome do material": "Material",
-                "nome material": "Material",
-                "material": "Material",
-                "lote do material": "Lote",
-                "lote material": "Lote",
-                "lote": "Lote",
-                "quantidade": "Quantidade",
-                "unidade": "Unidade de Medida",
-                "unidade medida": "Unidade de Medida",
-                "unidade de medida": "Unidade de Medida",
-                "vencimento": "Data de Vencimento",
-                "data vencimento": "Data de Vencimento",
-                "data de vencimento": "Data de Vencimento",
-                "validade": "Data de Vencimento",
-                "data validade": "Data de Vencimento",
-                "dias vencer": "Dias para Vencer",
-                "dias para vencer": "Dias para Vencer",
-                "dias p vencer": "Dias para Vencer",
-                "tipo": "Tipo",
-                "observacao": "Observação",
-                "observacoes": "Observação",
-                "observacao opcional": "Observação",
-                "usuario": "Usuário que Registrou",
-                "usuario que registrou": "Usuário que Registrou",
-                "data insercao": "Data de Inserção",
-                "data de insercao": "Data de Inserção",
-            }
-            def canonical_header(header: object) -> str:
-                normalized = unicodedata.normalize("NFKD", str(header).strip().rstrip(":"))
+
+            def canonical(header: str) -> str:
+                normalized = unicodedata.normalize("NFKD", str(header))
                 normalized = normalized.encode("ascii", "ignore").decode().lower()
                 normalized = re.sub(r"[^a-z0-9]+", " ", normalized).strip()
+                aliases = {
+                    "id": "ID",
+                    "material": "Material",
+                    "quantidade": "Quantidade",
+                    "unidade de medida": "Unidade de Medida",
+                    "lote": "Lote",
+                    "data de vencimento": "Data de Vencimento",
+                    "dias para vencer": "Dias para Vencer",
+                    "status": "Status",
+                    "observacao": "Observação",
+                    "observacoes": "Observação",
+                    "usuario que registrou": "Usuário que Registrou",
+                    "data de insercao": "Data de Inserção",
+                }
                 return aliases.get(normalized, str(header).strip())
 
-            normalized_headers = [
-                canonical_header(header)
-                for header in headers
-            ]
-            data_rows = all_rows[1:]
+            headers = [canonical(header) for header in rows[0]]
             records: list[dict[str, Any]] = []
             sheet_rows: list[int] = []
-            for index, row in enumerate(data_rows, start=2):
-                if not any(str(c).strip() for c in row):
+            for row_number, row in enumerate(rows[1:], start=2):
+                if not any(str(value).strip() for value in row):
                     continue
-                record = {h: (row[i] if i < len(row) else '') for i, h in enumerate(normalized_headers)}
+                record = {
+                    header: row[index] if index < len(row) else ""
+                    for index, header in enumerate(headers)
+                    if header
+                }
                 if not str(record.get("Material", "")).strip():
                     continue
                 records.append(record)
-                sheet_rows.append(index)
-            if not records:
-                return pd.DataFrame(columns=COLUNAS_MATERIAIS)
-            df = pd.DataFrame(records)
-            df = _ensure_cols(df, COLUNAS_MATERIAIS)
-            df['_sheet_row'] = sheet_rows
-            return df
+                sheet_rows.append(row_number)
+
+            dataframe = pd.DataFrame(records) if records else pd.DataFrame(columns=COLUNAS_MATERIAIS)
+            dataframe = _ensure_cols(dataframe, COLUNAS_MATERIAIS)
+            if records:
+                dataframe["_sheet_row"] = sheet_rows
+            return dataframe
+        except gspread.exceptions.WorksheetNotFound:
+            return pd.DataFrame(columns=COLUNAS_MATERIAIS)
         except Exception:
-            st.error('Erro ao ler materiais')
+            st.error("Erro ao ler materiais")
             st.error(traceback.format_exc())
             return pd.DataFrame(columns=COLUNAS_MATERIAIS)
 
 
-    @st.cache_data(ttl=30)
+    @st.cache_data(ttl=_CACHE_TTL_SECONDS)
     def ler_registro_diario() -> pd.DataFrame:
         config = get_config()
         try:
-            rows = _get_ws(config.aba_registro).get_all_values()
+            rows = _get_ws(config.aba_registro).get(
+                f"A:{_column_letter(len(COLUNAS_REGISTRO))}"
+            )
             if not rows or len(rows) < 2:
                 return pd.DataFrame(columns=COLUNAS_REGISTRO)
 
@@ -366,9 +409,13 @@ if _GSPREAD_AVAILABLE:
                 "nome da paciente": "Paciente",
                 "datahora": "Data Hora",
                 "medicamento": "Medicamento",
+                "medicamentos json": "Medicamentos JSON",
                 "lote medicamento": "Lote",
+                "lote medicamentos": "Lote",
                 "material": "Material",
+                "materiais json": "Materiais JSON",
                 "lote material": "Lote Material",
+                "lote materiais": "Lote Material",
                 "quantidade": "Quantidade",
                 "quantidade medicamento": "Quantidade Medicamento",
                 "quantidade material": "Quantidade Material",
@@ -395,7 +442,10 @@ if _GSPREAD_AVAILABLE:
                         record[header] = row[index] if index < len(row) else ""
                     elif header and index < len(row) and str(row[index]).strip():
                         record[header] = row[index]
-                if not any(str(record.get(field, "")).strip() for field in ("ID", "Data Hora", "Medicamento")):
+                if not any(
+                    str(record.get(field, "")).strip()
+                    for field in ("ID", "Data Hora", "Medicamento", "Medicamentos JSON")
+                ):
                     continue
                 records.append(record)
             df = pd.DataFrame(records) if records else pd.DataFrame(columns=COLUNAS_REGISTRO)
@@ -408,11 +458,14 @@ if _GSPREAD_AVAILABLE:
             return pd.DataFrame(columns=COLUNAS_REGISTRO)
 
 
-    @st.cache_data(ttl=30)
+    @st.cache_data(ttl=_CACHE_TTL_SECONDS)
     def ler_historico() -> pd.DataFrame:
         config = get_config()
         try:
-            data = _get_ws(config.aba_historico).get_all_records()
+            rows = _get_ws(config.aba_historico).get(
+                f"A:{_column_letter(len(COLUNAS_HISTORICO))}"
+            )
+            data = [dict(zip(rows[0], row)) for row in rows[1:]] if rows else []
             df = pd.DataFrame(data) if data else pd.DataFrame(columns=COLUNAS_HISTORICO)
             return _ensure_cols(df, COLUNAS_HISTORICO)
         except gspread.exceptions.WorksheetNotFound:
@@ -434,7 +487,7 @@ if _GSPREAD_AVAILABLE:
             ws = _get_ws(config.aba_estoque)
 
             # Read headers and rows
-            all_rows = ws.get_all_values()
+            all_rows = ws.get(f"A:{_column_letter(len(COLUNAS_ESTOQUE))}")
             headers = all_rows[0] if all_rows and len(all_rows) > 0 else []
 
             def _tokens(s: str) -> set[str]:
@@ -444,10 +497,6 @@ if _GSPREAD_AVAILABLE:
 
             col_map: dict[int, str] = {}
             for idx, h in enumerate(headers):
-                direct = _canonical_estoque_column(h)
-                if direct:
-                    col_map[idx] = direct
-                    continue
                 h_toks = _tokens(h)
                 if 'p' in h_toks and 'para' not in h_toks:
                     h_toks = h_toks | {'para'}
@@ -492,25 +541,36 @@ if _GSPREAD_AVAILABLE:
             new_row = [''] * ncols
             for idx in range(ncols):
                 canon = col_map.get(idx)
-                header_text = str(headers[idx] if idx < len(headers) else "").lower()
+                header_name = headers[idx] if idx < len(headers) else ""
+
+                header_text = unicodedata.normalize(
+                    "NFKD",
+                    str(header_name).strip().lower(),
+                ).encode("ascii", "ignore").decode()
+
                 if canon:
                     if canon in ("Dias para Vencer", "Status"):
-                        new_row[idx] = ''
+                        new_row[idx] = ""
+
                     elif canon == "ID":
                         id_column = _column_letter(idx + 1)
-                        new_row[idx] = f"=MAX({id_column}$2:{id_column}{target - 1})+1"
+                        new_row[idx] = (
+                            f"=MAX({id_column}$2:{id_column}{target - 1})+1"
+                        )
+
                     elif canon == "Usuário que Registrou":
                         new_row[idx] = "Stephanny"
+
                     elif canon == "Data de Inserção":
                         new_row[idx] = formatar_data_hora()
-                    else:
-                        new_row[idx] = dados.get(canon, '')
-                if "inser" in header_text and ("data" in header_text or "dia" in header_text):
-                    new_row[idx] = formatar_data_hora()
 
-                header_name = headers[idx] if idx < len(headers) else ""
-                norm_header = str(header_name).strip().lower()
-                if 'inser' in norm_header and 'data' in norm_header:
+                    else:
+                        new_row[idx] = dados.get(canon, "")
+
+                if (
+                    "inser" in header_text
+                    and ("data" in header_text or "dia" in header_text)
+                ):
                     new_row[idx] = formatar_data_hora()
 
             # try insert, fallback to insertDimension+update, then fallback to append
@@ -523,7 +583,8 @@ if _GSPREAD_AVAILABLE:
                         raise RuntimeError('sheetId não disponível')
                     body = {'requests': [{'insertDimension': {
                         'range': {'sheetId': sheet_id, 'dimension': 'ROWS', 'startIndex': target - 1, 'endIndex': target},
-                        'inheritFromBefore': False}}]}
+                        'inheritFromBefore': False
+                    }}]}
                     _get_spreadsheet().batch_update(body)
                     end_col = _column_letter(len(new_row)) if new_row else 'A'
                     _get_ws(get_config().aba_estoque).update(f"A{target}:{end_col}{target}", [new_row], value_input_option="USER_ENTERED")
@@ -566,7 +627,13 @@ if _GSPREAD_AVAILABLE:
                     t |= {'para'}
                 return t
 
-            skip = {"ID", "Usuário que Registrou", "Data de Inserção", "Dias para Vencer", "Status"}
+            skip = {
+                "ID",
+                "Usuário que Registrou",
+                "Data de Inserção",
+                "Dias para Vencer",
+                "Status",
+            }
             stop = {'de', 'da', 'do', 'dos', 'das', 'o', 'a', 'e'}
             cell_updates: list[dict] = []
             for col_idx, h in enumerate(headers, start=1):
@@ -667,7 +734,7 @@ if _GSPREAD_AVAILABLE:
         try:
             config = get_config()
             ws = _get_ws(config.aba_materiais)
-            all_rows = ws.get_all_values()
+            all_rows = ws.get(f"A:{_column_letter(len(COLUNAS_MATERIAIS))}")
             headers = all_rows[0] if all_rows and len(all_rows) > 0 else []
 
             def _tokens(s: str) -> set[str]:
@@ -718,18 +785,37 @@ if _GSPREAD_AVAILABLE:
             new_row = [''] * ncols
             for idx in range(ncols):
                 canon = col_map.get(idx)
+                header_name = headers[idx] if idx < len(headers) else ""
+
+                header_text = unicodedata.normalize(
+                    "NFKD",
+                    str(header_name).strip().lower(),
+                ).encode("ascii", "ignore").decode()
+
                 if canon:
                     if canon in ("Dias para Vencer", "Status"):
-                        new_row[idx] = ''
+                        new_row[idx] = ""
+
                     elif canon == "ID":
                         id_column = _column_letter(idx + 1)
-                        new_row[idx] = f"=MAX({id_column}$2:{id_column}{target - 1})+1"
+                        new_row[idx] = (
+                            f"=MAX({id_column}$2:{id_column}{target - 1})+1"
+                        )
+
                     elif canon == "Usuário que Registrou":
                         new_row[idx] = "Stephanny"
+
                     elif canon == "Data de Inserção":
                         new_row[idx] = formatar_data_hora()
+
                     else:
-                        new_row[idx] = dados.get(canon, '')
+                        new_row[idx] = dados.get(canon, "")
+
+                if (
+                    "inser" in header_text
+                    and ("data" in header_text or "dia" in header_text)
+                ):
+                    new_row[idx] = formatar_data_hora()
 
             try:
                 ws.insert_row(new_row, index=target, value_input_option='USER_ENTERED')
@@ -818,10 +904,12 @@ if _GSPREAD_AVAILABLE:
         try:
             config = get_config()
             spreadsheet = _get_spreadsheet()
-            ws = spreadsheet.worksheet(config.aba_auditoria) if config.aba_auditoria in [sheet.title for sheet in spreadsheet.worksheets()] else None
-            if ws is None:
+            try:
+                ws = _get_ws(config.aba_auditoria)
+            except gspread.exceptions.WorksheetNotFound:
                 ws = spreadsheet.add_worksheet(title=config.aba_auditoria, rows='1000', cols='20')
                 ws.append_row(COLUNAS_AUDITORIA, value_input_option='USER_ENTERED')
+                _get_ws.clear()
             ws.append_row(_row(dados, COLUNAS_AUDITORIA), value_input_option='USER_ENTERED')
             return True
         except Exception:
@@ -830,30 +918,39 @@ if _GSPREAD_AVAILABLE:
             return False
 
     def auditar_alteracao(modulo: str, registro: str, campo_alterado: str, valor_anterior: object, valor_novo: object, justificativa: str, usuario: str = "Sistema Streamlit") -> bool:
+        global _NEXT_AUDIT_ID
         data_hora = formatar_data_hora()
         data, hora = data_hora.split(' ')
-        try:
-            config = get_config()
-            spreadsheet = _get_spreadsheet()
-            ws = spreadsheet.worksheet(config.aba_auditoria)
-            rows = ws.get_all_values()
-            ids = pd.to_numeric(
-                pd.Series([row[0] for row in rows[1:] if row]),
-                errors="coerce",
-            ).dropna()
-            proximo_id = int(ids.max()) + 1 if not ids.empty else 1
-        except Exception:
-            proximo_id = 1
+        if _NEXT_AUDIT_ID is None:
+            try:
+                config = get_config()
+                ws = _get_ws(config.aba_auditoria)
+                ids = pd.to_numeric(
+                    pd.Series(ws.col_values(1)[1:]),
+                    errors="coerce",
+                ).dropna()
+                _NEXT_AUDIT_ID = int(ids.max()) + 1 if not ids.empty else 1
+            except Exception:
+                _NEXT_AUDIT_ID = 1
+
+        proximo_id = _NEXT_AUDIT_ID
+        _NEXT_AUDIT_ID += 1
+
+        def serializar(valor: object) -> str:
+            if isinstance(valor, (dict, list, tuple)):
+                return json.dumps(valor, ensure_ascii=False)
+            return str(valor)
+
         return adicionar_auditoria({
             'ID': proximo_id,
             'Data': data,
             'Hora': hora,
             'Usuário': usuario,
             'Módulo': modulo,
-            'Registro': registro,
+            'Registro': serializar(registro),
             'Campo Alterado': campo_alterado,
-            'Valor Anterior': str(valor_anterior),
-            'Valor Novo': str(valor_novo),
+            'Valor Anterior': serializar(valor_anterior),
+            'Valor Novo': serializar(valor_novo),
             'Justificativa': justificativa,
             'Origem': 'Sistema Streamlit',
         })
@@ -862,6 +959,10 @@ else:
     def ler_estoque() -> pd.DataFrame:
         _missing_dependency_msg()
         return pd.DataFrame(columns=COLUNAS_ESTOQUE)
+
+    def ler_materiais() -> pd.DataFrame:
+        _missing_dependency_msg()
+        return pd.DataFrame(columns=COLUNAS_MATERIAIS)
 
     def ler_registro_diario() -> pd.DataFrame:
         _missing_dependency_msg()

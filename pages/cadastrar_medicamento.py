@@ -19,6 +19,7 @@ from utils.helpers import (
     formatar_data_hora,
     normalizar_texto,
 )
+from utils.constants import UNIDADES_FRACIONADAS
 
 
 def mostrar_toast_pendente():
@@ -36,113 +37,339 @@ tab_cad, tab_edit, tab_del, tab_cons = st.tabs(["📝 Cadastrar", "✏️ Editar
 
 # ── CADASTRAR ──────────────────────────────────────────────────────────────────
 with tab_cad:
-    st.markdown('<div class="section-header">Novo(s) Medicamento(s)</div>', unsafe_allow_html=True)
-    st.caption("ID: próximo número automático | Usuário: Stephanny | Inserção/Revisão: data e hora atual")
+    st.markdown(
+        '<div class="section-header">Novo(s) Medicamento(s)</div>',
+        unsafe_allow_html=True,
+    )
 
-    if 'med_ids' not in st.session_state:
+    st.caption(
+        "ID: próximo número automático | Usuário: Stephanny | "
+        "Inserção/Revisão: data e hora atual"
+    )
+
+    if "med_ids" not in st.session_state:
         st.session_state.med_ids = [0]
         st.session_state.med_counter = 0
 
-    # combine sheet units with session-added custom units
-    session_custom_units = st.session_state.get('custom_units', [])
-    all_units = get_unidades_from_sheet()
-    all_units = sorted(list(dict.fromkeys(all_units + session_custom_units)))
-    all_units += ["✏️ Inserir Manualmente", "➕ Inserir Nova Unidade"]
+    unidades = get_unidades_from_sheet()
+    unidades += st.session_state.get("custom_units", [])
+    unidades = sorted(list(dict.fromkeys(unidades)))
+    unidades += [
+        "✏️ Inserir Manualmente",
+        "➕ Inserir Nova Unidade",
+    ]
 
     for row_id in list(st.session_state.med_ids):
         with st.container(border=True):
-            c1, c2 = st.columns(2)
-            with c1:
-                st.text_input("Nome do Medicamento *", key=f"m_nome_{row_id}")
-                st.number_input("Quantidade *", min_value=1, step=1, value=st.session_state.get(f"m_qtd_{row_id}", 1), key=f"m_qtd_{row_id}")
-                st.selectbox("Unidade de Medida *", options=all_units, key=f"m_unid_{row_id}")
-                sel = st.session_state.get(f"m_unid_{row_id}")
-                if sel == "✏️ Inserir Manualmente":
-                    st.text_input("Digite a unidade", placeholder="ex: Sachê(s), Bisnaga(s)...",
-                                  key=f"m_unid_manual_{row_id}", label_visibility="collapsed")
-                elif sel == "➕ Inserir Nova Unidade":
-                    new_u = st.text_input("Nova Unidade", placeholder="ex: Sachê(s)", key=f"m_new_unid_{row_id}")
-                    if st.button("Adicionar Unidade", key=f"m_add_unid_{row_id}"):
-                        nu = (new_u or '').strip()
-                        if nu:
-                            lst = st.session_state.get('custom_units', [])
-                            if nu not in lst:
-                                lst.append(nu)
-                                st.session_state['custom_units'] = lst
-                                st.success(f"Unidade '{nu}' adicionada (sessão).")
-                                st.experimental_rerun()
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.text_input(
+                    "Nome do Medicamento *",
+                    key=f"m_nome_{row_id}",
+                )
+
+                st.number_input(
+                    "Quantidade Fechada *",
+                    min_value=0,
+                    step=1,
+                    value=1,
+                    key=f"m_qtd_{row_id}",
+                    help="Quantidade de unidades fechadas disponíveis.",
+                )
+
+                st.selectbox(
+                    "Unidade de estoque (fechada) *",
+                    options=unidades,
+                    key=f"m_unid_{row_id}",
+                    help="Exemplo: Ampola(s), Frasco(s) ou Comprimido(s).",
+                )
+
+                unidade_selecionada = st.session_state.get(
+                    f"m_unid_{row_id}",
+                    "",
+                )
+
+                if unidade_selecionada == "✏️ Inserir Manualmente":
+                    st.text_input(
+                        "Digite a unidade",
+                        placeholder="Ex.: Sachê(s), Bisnaga(s)",
+                        key=f"m_unid_manual_{row_id}",
+                    )
+
+                elif unidade_selecionada == "➕ Inserir Nova Unidade":
+                    nova_unidade = st.text_input(
+                        "Nova Unidade",
+                        placeholder="Ex.: Sachê(s)",
+                        key=f"m_new_unid_{row_id}",
+                    )
+
+                    if st.button(
+                        "Adicionar Unidade",
+                        key=f"m_add_unid_{row_id}",
+                    ):
+                        nova_unidade = nova_unidade.strip()
+
+                        if not nova_unidade:
+                            st.error("Digite a unidade antes de adicionar.")
                         else:
-                            st.error('Digite a unidade antes de adicionar.')
-            with c2:
-                st.text_input("Lote *", key=f"m_lote_{row_id}")
-                st.date_input("Data de Vencimento *", value=date.today(), format="DD/MM/YYYY", key=f"m_val_{row_id}")
-                st.text_area("Observações", height=68, key=f"m_obs_{row_id}")
+                            unidades_customizadas = st.session_state.get(
+                                "custom_units",
+                                [],
+                            )
+
+                            if nova_unidade not in unidades_customizadas:
+                                unidades_customizadas.append(nova_unidade)
+                                st.session_state.custom_units = (
+                                    unidades_customizadas
+                                )
+
+                            st.success(
+                                f"Unidade '{nova_unidade}' adicionada."
+                            )
+                            st.rerun()
+
+                unidade_fracionada = st.selectbox(
+                    "Pode ser usado parcialmente? *",
+                    options=["Não", "Sim"],
+                    key=f"m_fracionada_{row_id}",
+                    help="Escolha Sim para ampolas ou frascos que podem ser abertos e consumidos em partes.",
+                )
+
+                if unidade_fracionada == "Sim":
+                    unidade_consumo = st.selectbox(
+                        "Unidade usada no consumo *",
+                        options=UNIDADES_FRACIONADAS,
+                        key=f"m_unidade_consumo_{row_id}",
+                        help="Exemplo: escolha ml para uma ampola de 25 ml.",
+                    )
+
+                    volume_por_unidade = st.number_input(
+                        f"Volume total de 1 {unidade_selecionada or 'unidade'} ({unidade_consumo}) *",
+                        min_value=0.01,
+                        step=0.01,
+                        value=1.0,
+                        key=f"m_volume_{row_id}",
+                        help="Exemplo: uma ampola com 25 ml deve ser cadastrada como 25.",
+                    )
+
+                    saldo_aberto = st.number_input(
+                        f"Saldo já aberto ({unidade_consumo}) - opcional",
+                        min_value=0.0,
+                        step=0.01,
+                        value=0.0,
+                        key=f"m_saldo_{row_id}",
+                        help="Preencha somente se já houver uma ampola ou frasco aberto. Se tudo estiver fechado, use 0.",
+                    )
+                else:
+                    unidade_consumo = ""
+                    volume_por_unidade = 0.0
+                    saldo_aberto = 0.0
+
+            with col2:
+                st.text_input(
+                    "Lote *",
+                    key=f"m_lote_{row_id}",
+                )
+
+                st.date_input(
+                    "Data de Vencimento *",
+                    value=date.today(),
+                    format="DD/MM/YYYY",
+                    key=f"m_val_{row_id}",
+                )
+
+                st.text_area(
+                    "Observações",
+                    height=100,
+                    key=f"m_obs_{row_id}",
+                )
+
             if len(st.session_state.med_ids) > 1:
-                if st.button("🗑️ Remover", key=f"m_rem_{row_id}"):
+                if st.button(
+                    "🗑️ Remover",
+                    key=f"m_rem_{row_id}",
+                ):
                     st.session_state.med_ids.remove(row_id)
                     st.rerun()
 
-    # place the add button to the right
-    _, col_add = st.columns([8, 2])
-    with col_add:
-        if st.button("➕ Adicionar Medicamento", width='stretch'):
+    col_add_1, col_add_2 = st.columns([8, 2])
+
+    with col_add_2:
+        if st.button(
+            "➕ Adicionar Medicamento",
+            width="stretch",
+        ):
             st.session_state.med_counter += 1
-            st.session_state.med_ids.append(st.session_state.med_counter)
+            st.session_state.med_ids.append(
+                st.session_state.med_counter
+            )
             st.rerun()
 
-    if st.button("✅ Cadastrar Medicamento(s)", width='stretch', type="primary"):
+    if st.button(
+        "✅ Cadastrar Medicamento(s)",
+        width="stretch",
+        type="primary",
+    ):
         erros: list[str] = []
         registros: list[dict] = []
-        for i, row_id in enumerate(st.session_state.med_ids):
-            nome = st.session_state.get(f"m_nome_{row_id}", "").strip()
-            qtd = st.session_state.get(f"m_qtd_{row_id}", 1)
-            unid_sel = st.session_state.get(f"m_unid_{row_id}", "")
-            unid_manual = st.session_state.get(f"m_unid_manual_{row_id}", "").strip()
-            unidade = unid_manual if unid_sel == "✏️ Inserir Manualmente" else unid_sel
-            lote = st.session_state.get(f"m_lote_{row_id}", "").strip()
-            validade = st.session_state.get(f"m_val_{row_id}", date.today())
-            obs = st.session_state.get(f"m_obs_{row_id}", "").strip()
+
+        for indice, row_id in enumerate(
+            st.session_state.med_ids,
+            start=1,
+        ):
+            nome = st.session_state.get(
+                f"m_nome_{row_id}",
+                "",
+            ).strip()
+
+            quantidade_fechada = st.session_state.get(
+                f"m_qtd_{row_id}",
+                0,
+            )
+
+            unidade_selecionada = st.session_state.get(
+                f"m_unid_{row_id}",
+                "",
+            )
+
+            unidade_manual = st.session_state.get(
+                f"m_unid_manual_{row_id}",
+                "",
+            ).strip()
+
+            unidade = (
+                unidade_manual
+                if unidade_selecionada == "✏️ Inserir Manualmente"
+                else unidade_selecionada
+            )
+
+            unidade_fracionada = st.session_state.get(
+                f"m_fracionada_{row_id}",
+                "Não",
+            )
+
+            unidade_consumo = st.session_state.get(
+                f"m_unidade_consumo_{row_id}",
+                "",
+            )
+
+            volume_por_unidade = st.session_state.get(
+                f"m_volume_{row_id}",
+                0,
+            )
+
+            saldo_aberto = st.session_state.get(
+                f"m_saldo_{row_id}",
+                0,
+            )
+
+            lote = st.session_state.get(
+                f"m_lote_{row_id}",
+                "",
+            ).strip()
+
+            validade = st.session_state.get(
+                f"m_val_{row_id}",
+                date.today(),
+            )
+
+            observacoes = st.session_state.get(
+                f"m_obs_{row_id}",
+                "",
+            ).strip()
 
             if not nome:
-                erros.append(f"Medicamento {i+1}: Nome é obrigatório.")
-            if not lote:
-                erros.append(f"Medicamento {i+1}: Lote é obrigatório.")
+                erros.append(
+                    f"Medicamento {indice}: nome é obrigatório."
+                )
+
             if not unidade:
-                erros.append(f"Medicamento {i+1}: Unidade de medida é obrigatória.")
-            if not erros or (nome and lote and unidade):
-                val_str = validade.strftime("%d/%m/%Y") if isinstance(validade, date) else str(validade)
-                registros.append({
+                erros.append(
+                    f"Medicamento {indice}: unidade de medida é obrigatória."
+                )
+
+            if not lote:
+                erros.append(
+                    f"Medicamento {indice}: lote é obrigatório."
+                )
+
+            if (
+                unidade_fracionada == "Sim"
+                and volume_por_unidade <= 0
+            ):
+                erros.append(
+                    f"Medicamento {indice}: informe um volume válido."
+                )
+
+            validade_formatada = (
+                validade.strftime("%d/%m/%Y")
+                if isinstance(validade, date)
+                else str(validade)
+            )
+
+            registros.append(
+                {
                     "Medicamento": nome,
                     "Usuário que Registrou": "Stephanny",
                     "Data de Inserção": formatar_data_hora(),
-                    "Quantidade": int(qtd),
+                    "Quantidade": int(quantidade_fechada),
+                    "Quantidade Fechada": int(quantidade_fechada),
+                    "Saldo Aberto": (
+                        float(saldo_aberto)
+                        if unidade_fracionada == "Sim"
+                        else 0
+                    ),
+                    "Volume por Unidade": (
+                        float(volume_por_unidade)
+                        if unidade_fracionada == "Sim"
+                        else ""
+                    ),
+                    "Unidade Fracionada": unidade_fracionada,
+                    "Unidade de Consumo": (
+                        unidade_consumo
+                        if unidade_fracionada == "Sim"
+                        else ""
+                    ),
+                    "Fracionamento JSON": "",
                     "Unidade de Medida": unidade,
                     "Lote": lote,
-                    "Data de Vencimento": val_str,
-                    "Observações": obs,
-                })
+                    "Data de Vencimento": validade_formatada,
+                    "Observações": observacoes,
+                }
+            )
 
         if erros:
-            for e in erros:
-                st.error(e)
+            for erro in erros:
+                st.error(erro)
+
         elif registros:
-            sucesso = sum(1 for d in registros if adicionar_medicamento(d))
+            sucessos = sum(
+                1
+                for registro in registros
+                if adicionar_medicamento(registro)
+            )
+
             get_estoque.clear()
-            if sucesso == len(registros):
-                st.session_state["toast_mensagem"] = (
-                    f"{sucesso} medicamento(s) cadastrado(s) com sucesso!",
+
+            if sucessos == len(registros):
+                st.session_state.toast_mensagem = (
+                    f"{sucessos} medicamento(s) cadastrado(s) com sucesso!",
                     "✅",
                 )
+
                 st.session_state.med_ids = [0]
                 st.session_state.med_counter = 0
 
-                for k in [k for k in list(st.session_state.keys()) if k.startswith("m_")]:
-                    del st.session_state[k]
+                for chave in list(st.session_state.keys()):
+                    if chave.startswith("m_"):
+                        del st.session_state[chave]
 
                 st.rerun()
             else:
-                st.session_state["toast_mensagem"] = (
-                    f"{len(registros) - sucesso} medicamento(s) não puderam ser cadastrados.",
+                st.session_state.toast_mensagem = (
+                    f"{len(registros) - sucessos} medicamento(s) "
+                    "não puderam ser cadastrados.",
                     "❌",
                 )
                 st.rerun()
@@ -181,12 +408,38 @@ with tab_edit:
             c1, c2 = st.columns(2)
             with c1:
                 e_nome = st.text_input("Nome", value=str(row["Medicamento"]))
-                e_qtd = st.number_input("Quantidade", min_value=0, step=1, value=int(float(str(row["Quantidade"] or 0))))
+                e_qtd = st.number_input("Quantidade fechada", min_value=0, step=1, value=int(float(str(row["Quantidade"] or 0))))
                 e_unidade_sel = st.selectbox("Unidade", options=all_units_edit, index=unid_idx)
                 if e_unidade_sel == "✏️ Inserir Manualmente":
                     e_unidade_manual = st.text_input("Unidade (manual)", placeholder="ex: Sachê(s)...")
                 else:
                     e_unidade_manual = ""
+                e_fracionada = st.selectbox(
+                    "Pode ser usado parcialmente?",
+                    options=["Não", "Sim"],
+                    index=1 if str(row.get("Unidade Fracionada", "Não")).strip().lower() == "sim" else 0,
+                )
+                if e_fracionada == "Sim":
+                    e_unidade_consumo = st.selectbox(
+                        "Unidade usada no consumo",
+                        options=UNIDADES_FRACIONADAS,
+                        index=(UNIDADES_FRACIONADAS.index(str(row.get("Unidade de Consumo", "")))
+                               if str(row.get("Unidade de Consumo", "")) in UNIDADES_FRACIONADAS else 0),
+                    )
+                    e_volume = st.number_input(
+                        "Volume total de uma unidade fechada",
+                        min_value=0.01,
+                        step=0.01,
+                        value=float(row.get("Volume por Unidade", 0) or 0) or 1.0,
+                    )
+                    e_saldo = st.number_input(
+                        "Saldo já aberto",
+                        min_value=0.0,
+                        step=0.01,
+                        value=float(row.get("Saldo Aberto", 0) or 0),
+                    )
+                else:
+                    e_unidade_consumo, e_volume, e_saldo = "", 0.0, 0.0
             with c2:
                 e_lote = st.text_input("Lote", value=str(row["Lote"]))
                 e_val = st.date_input("Validade", value=val_atual, format="DD/MM/YYYY")
@@ -203,7 +456,12 @@ with tab_edit:
                 dados = {
                     "Medicamento": e_nome.strip(),
                     "Quantidade": int(e_qtd),
+                    "Quantidade Fechada": int(e_qtd),
                     "Unidade de Medida": e_unidade,
+                    "Unidade Fracionada": e_fracionada,
+                    "Unidade de Consumo": e_unidade_consumo,
+                    "Volume por Unidade": e_volume if e_fracionada == "Sim" else "",
+                    "Saldo Aberto": e_saldo if e_fracionada == "Sim" else 0,
                     "Lote": e_lote.strip(),
                     "Data de Vencimento": e_val.strftime("%d/%m/%Y"),
                     "Observações": e_obs.strip(),
