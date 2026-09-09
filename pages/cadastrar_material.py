@@ -1,4 +1,5 @@
 import streamlit as st
+from utils.helpers import render_responsive_table
 from datetime import date, datetime
 from services.estoque_service import (
     get_materiais,
@@ -366,4 +367,4 @@ with tab_cons:
                 na=False,
             )
             df_cons = df_cons[mask]
-        st.dataframe(df_cons, width='stretch', hide_index=True)
+        render_responsive_table(df_cons)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 import streamlit as st
+import html
+import pandas as pd
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
 from typing import Optional, Union, Any, Dict
@@ -100,7 +102,7 @@ def safe_float(value: object, default: float = 0.0) -> float:
 
 def normalizar_texto(value: object) -> str:
     """Normaliza texto para pesquisas sem diferença entre caixa ou acentos."""
-    text = unicodedata.normalize("NFKD", str(value or ""))
+    text = unicodedata.normalize("NFKD", str(value or "").strip())
     return "".join(char for char in text if not unicodedata.combining(char)).casefold()
 
 
@@ -110,6 +112,35 @@ def load_css() -> None:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
     except FileNotFoundError:
         pass
+
+
+def render_responsive_table(dataframe: pd.DataFrame) -> None:
+    if dataframe.empty:
+        st.info("Nenhum registro encontrado.")
+        return
+
+    headers = list(dataframe.columns)
+    header_html = "".join(
+        f"<th>{html.escape(str(header))}</th>" for header in headers
+    )
+    rows_html = []
+    for _, row in dataframe.iterrows():
+        cells = []
+        for header in headers:
+            value = html.escape(str(row.get(header, ""))).replace("\n", "<br>")
+            cells.append(
+                f'<td data-label="{html.escape(str(header))}">{value}</td>'
+            )
+        rows_html.append(f"<tr>{''.join(cells)}</tr>")
+
+    st.markdown(
+        '<div class="responsive-table-wrapper">'
+        '<table class="responsive-data-table">'
+        f"<thead><tr>{header_html}</tr></thead>"
+        f"<tbody>{''.join(rows_html)}</tbody>"
+        "</table></div>",
+        unsafe_allow_html=True,
+    )
 
 
 def metric_card(title: str, value: object, icon: str, color: str) -> str:

@@ -258,6 +258,35 @@ if _GSPREAD_AVAILABLE:
         return result
 
 
+    def _expandir_tabela(sheet_id: int, ultima_linha: int) -> None:
+        """Expande o limite da Tabela nativa do Google Sheets (se houver)
+        para incluir a última linha escrita. Sem isso, o limite antigo faz
+        com que gravações futuras via API (append_row/insert_row) fiquem
+        ancoradas na linha do cabeçalho."""
+        try:
+            meta = _get_spreadsheet().fetch_sheet_metadata()
+            for sheet in meta.get("sheets", []):
+                if sheet.get("properties", {}).get("sheetId") != sheet_id:
+                    continue
+                for tabela in sheet.get("tables", []):
+                    intervalo = tabela.get("range", {})
+                    if ultima_linha <= intervalo.get("endRowIndex", 0):
+                        continue
+                    novo_intervalo = {**intervalo, "endRowIndex": ultima_linha}
+                    _get_spreadsheet().batch_update({"requests": [{
+                        "updateTable": {
+                            "table": {
+                                "tableId": tabela.get("tableId"),
+                                "range": novo_intervalo,
+                            },
+                            "fields": "range",
+                        }
+                    }]})
+                break
+        except Exception:
+            pass
+
+
     def _apply_all_borders(ws: gspread.Worksheet, row: int, columns: int) -> None:
         border = {"style": "SOLID", "color": {"red": 0, "green": 0, "blue": 0}}
         _get_spreadsheet().batch_update({"requests": [{"updateBorders": {
@@ -690,7 +719,30 @@ if _GSPREAD_AVAILABLE:
                 ws.update(f"A1:{end_col}1", [headers], value_input_option="USER_ENTERED")
             if not dados:
                 return True
-            ws.append_row(_row(dados, headers), value_input_option="USER_ENTERED")
+
+            all_rows = ws.get_all_values()
+            last_data_row = 1
+            for row_number in range(len(all_rows) - 1, 0, -1):
+                if any(str(value).strip() for value in all_rows[row_number]):
+                    last_data_row = row_number + 1
+                    break
+
+            target = last_data_row + 1
+            new_row = _row(dados, headers)
+            end_col = _column_letter(len(new_row))
+
+            # Escrita por coordenada explícita: não depende da busca de
+            # "fim da tabela" usada por append_row/insert_row, que fica
+            # travada na linha do cabeçalho quando a aba tem uma Tabela
+            # nativa do Google Sheets (evita sobrescrever sempre a linha 2).
+            ws.update(
+                f"A{target}:{end_col}{target}",
+                [new_row],
+                value_input_option="USER_ENTERED",
+            )
+
+            _expandir_tabela(ws.id, target)
+            _apply_all_borders(ws, target, len(new_row))
             ler_registro_diario.clear()
             return True
         except Exception:

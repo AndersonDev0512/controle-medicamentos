@@ -4,6 +4,7 @@ from io import BytesIO
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from utils.helpers import render_responsive_table
 
 HAS_REPORTLAB = True
 try:
@@ -112,7 +113,7 @@ display_df["Status"] = display_df["Status"].map(lambda status: status_label(str(
 
 st.caption(f"Exibindo {len(df_filt)} de {len(df)} registro(s)")
 colunas = ["Material", "Quantidade", "Unidade de Medida", "Lote", "Data de Vencimento", "Dias para Vencer", "Status"]
-st.dataframe(display_df[colunas], width="stretch", hide_index=True)
+render_responsive_table(display_df[colunas])
 
 grafico_coluna, resumo_coluna = st.columns([2, 1])
 with grafico_coluna:

@@ -7,7 +7,7 @@ from services.estoque_service import get_estoque
 from services.estoque_service import get_materiais
 from utils.config import get_config
 from utils.constants import STATUS_VENCIDO, STATUS_CRITICO, STATUS_ATENCAO, STATUS_PROXIMO, STATUS_OK
-from utils.helpers import normalizar_texto, status_label
+from utils.helpers import normalizar_texto, render_responsive_table, status_label
 import plotly.express as px
 
 
@@ -279,11 +279,7 @@ with tab_estoque_medicamentos:
         if coluna in display_df.columns
     ]
 
-    st.dataframe(
-        display_df[colunas_existentes],
-        width="stretch",
-        hide_index=True,
-    )
+    render_responsive_table(display_df[colunas_existentes])
 
     grafico_coluna, resumo_coluna = st.columns([2, 1])
 
@@ -534,7 +530,7 @@ with tab_estoque_materiais:
 
     st.caption(f"Exibindo {len(df_filt)} de {len(df)} registro(s)")
     colunas = ["Material", "Quantidade", "Unidade de Medida", "Lote", "Data de Vencimento", "Dias para Vencer", "Status"]
-    st.dataframe(display_df[colunas], width="stretch", hide_index=True)
+    render_responsive_table(display_df[colunas])
 
     grafico_coluna, resumo_coluna = st.columns([2, 1])
     with grafico_coluna:

@@ -15,6 +15,7 @@ except Exception:
     HAS_REPORTLAB = False
 from services.sheets_service import ler_historico, ler_registro_diario
 from utils.constants import TIPOS_MOVIMENTACAO
+from utils.helpers import render_responsive_table
 
 
 def gerar_pdf_aplicacoes(dataframe: pd.DataFrame, data_referencia: str) -> bytes:
@@ -171,7 +172,7 @@ if gerar_relatorio:
             exibicao["Materiais"] = exibicao["Materiais"].str.replace("<br/>", "\n", regex=False)
             exibicao = exibicao.rename(columns={"Data Hora": "Data/Hora"})
             colunas_exibicao = ["ID", "Data/Hora", "Paciente", "Medicamentos", "Materiais", "Aplicador", "Observação"]
-            st.dataframe(exibicao.reindex(columns=colunas_exibicao, fill_value=""), width="stretch", hide_index=True)
+            render_responsive_table(exibicao.reindex(columns=colunas_exibicao, fill_value=""))
 
             if HAS_REPORTLAB:
                 pdf_personalizado = gerar_pdf_relatorio_personalizado(
@@ -234,7 +235,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.dataframe(df_filt, width='stretch', hide_index=True)
+render_responsive_table(df_filt)
 
 st.markdown('<div class="section-header">Gerar relatório</div>', unsafe_allow_html=True)
 tipo_relatorio = st.selectbox(

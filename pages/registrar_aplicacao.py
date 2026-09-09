@@ -9,20 +9,21 @@ from services.aplicacao_service import (
 )
 from services.estoque_service import (
     get_estoque,
+    get_lotes_por_medicamento,
     get_materiais,
     get_materiales_list,
     get_quantidade_disponivel,
     get_quantidade_disponivel_material,
 )
 from services.sheets_service import ler_registro_diario
-from utils.helpers import formatar_data_hora
+from utils.helpers import formatar_data_hora, normalizar_texto
 
 
 st.markdown(
     """
     <style>
     .grupo-medicamentos {
-        border-left: 5px solid #3b82f6;
+        border-left: 5px solid #dc3545;
         padding-left: 14px;
         margin: 25px 0 15px;
     }
@@ -34,7 +35,7 @@ st.markdown(
     }
 
     .titulo-medicamentos {
-        color: #93c5fd !important;
+        color: #fda4af !important;
     }
 
     .titulo-materiais {
@@ -131,11 +132,7 @@ if not medicamentos:
 
 def novo_medicamento():
     medicamento = medicamentos[0]
-    lotes = sorted(
-        estoque_medicamentos.loc[
-            estoque_medicamentos["Medicamento"] == medicamento, "Lote"
-        ].dropna().astype(str).str.strip().unique().tolist()
-    )
+    lotes = sorted(get_lotes_por_medicamento(medicamento))
 
     return {
         "medicamento": medicamento,
@@ -207,6 +204,25 @@ def resumo_estoque_fracionado(linha: pd.Series, disponivel: float) -> str:
         f" + {saldo_aberto:g} {unidade_consumo} aberta"
         f" ({disponivel:g} {unidade_consumo} no total)"
     )
+
+
+def rotulo_lote_medicamento(lote: str, medicamento: str) -> str:
+    """Mostra o lote com a validade sem alterar o valor salvo no formulário."""
+    linhas = estoque_medicamentos[
+        (
+            estoque_medicamentos["Medicamento"].map(normalizar_texto)
+            == normalizar_texto(medicamento)
+        )
+        & (
+            estoque_medicamentos["Lote"].fillna("").astype(str).str.strip()
+            == str(lote).strip()
+        )
+    ]
+    if linhas.empty:
+        return str(lote)
+
+    validade = str(linhas.iloc[0].get("Data de Vencimento", "")).strip()
+    return f"{lote} | Vencimento: {validade or 'não informado'}"
 
 
 def resumir_json_registro(
@@ -323,109 +339,120 @@ observacao = st.text_area(
 )
 
 
-st.markdown(
-    '<div class="grupo-medicamentos">'
-    '<h2 class="titulo-medicamentos">Medicamentos</h2>'
-    "</div>",
-    unsafe_allow_html=True,
+titulo_medicamentos, acao_medicamentos = st.columns([8, 1])
+with titulo_medicamentos:
+    st.markdown(
+        '<div class="grupo-medicamentos">'
+        '<h2 class="titulo-medicamentos">Medicamentos</h2>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
+with acao_medicamentos:
+    st.button(
+        "+",
+        key="add-medication-header",
+        on_click=lambda: st.session_state.medicamentos_aplicacao.append(
+            novo_medicamento()
+        ),
+        help="Adicionar medicamento",
+    )
+
+colunas_medicamentos = st.columns(
+    min(len(st.session_state.medicamentos_aplicacao), 3)
 )
 
 for index, item in enumerate(st.session_state.medicamentos_aplicacao):
-    st.markdown(f"### Medicamento {index + 1}")
+    with colunas_medicamentos[index % 3]:
+        with st.container(border=True, key=f"medication-card-{index}"):
+            st.markdown(f"### Medicamento {index + 1}")
 
-    chave_medicamento = f"medicamento_{index}"
-    chave_lote = f"lote_medicamento_{index}"
-    chave_quantidade = f"quantidade_medicamento_{index}"
+            chave_medicamento = f"medicamento_{index}"
+            chave_lote = f"lote_medicamento_{index}"
+            chave_quantidade = f"quantidade_medicamento_{index}"
 
-    medicamento_atual = item["medicamento"]
+            medicamento_atual = item["medicamento"]
 
-    col_med, col_lote, col_qtd, col_remover = st.columns(
-        [3, 2, 1.3, 0.7]
-    )
+            medicamento = st.selectbox(
+                "Medicamento *",
+                options=medicamentos,
+                index=(
+                    medicamentos.index(medicamento_atual)
+                    if medicamento_atual in medicamentos
+                    else 0
+                ),
+                key=chave_medicamento,
+            )
 
-    with col_med:
-        medicamento = st.selectbox(
-            "Medicamento *",
-            options=medicamentos,
-            index=(
-                medicamentos.index(medicamento_atual)
-                if medicamento_atual in medicamentos
+            lotes = sorted(get_lotes_por_medicamento(medicamento))
+
+            if st.session_state.get(chave_lote) not in lotes:
+                st.session_state[chave_lote] = lotes[0] if lotes else "—"
+
+            lote = st.selectbox(
+                "Lote *",
+                options=lotes if lotes else ["—"],
+                format_func=lambda valor: rotulo_lote_medicamento(valor, medicamento),
+                key=chave_lote,
+            )
+
+            disponivel = (
+                get_quantidade_disponivel(medicamento, lote)
+                if lote != "—"
                 else 0
-            ),
-            key=chave_medicamento,
-        )
+            )
 
-    lotes = sorted(
-        estoque_medicamentos.loc[
-            estoque_medicamentos["Medicamento"] == medicamento, "Lote"
-        ].dropna().astype(str).str.strip().unique().tolist()
-    )
+            linha_medicamento = estoque_medicamentos[
+                (
+                    estoque_medicamentos["Medicamento"].map(normalizar_texto)
+                    == normalizar_texto(medicamento)
+                )
+                & (
+                    estoque_medicamentos["Lote"].fillna("").astype(str).str.strip()
+                    == str(lote).strip()
+                )
+            ]
+            unidade_consumo = ""
+            fracionado = False
+            if not linha_medicamento.empty:
+                dados_medicamento = linha_medicamento.iloc[0]
+                fracionado = (
+                    str(dados_medicamento.get("Unidade Fracionada", "Não"))
+                    .strip()
+                    .lower()
+                    == "sim"
+                )
+                unidade_consumo = obter_unidade_consumo(dados_medicamento, fracionado)
 
-    if st.session_state.get(chave_lote) not in lotes:
-        st.session_state[chave_lote] = lotes[0] if lotes else "—"
+            quantidade = st.number_input(
+                (
+                    f"Consumo ({unidade_consumo}) *"
+                    if fracionado and unidade_consumo
+                    else "Quantidade *"
+                ),
+                min_value=0.01,
+                max_value=max(float(disponivel), 0.01),
+                value=min(
+                    float(item.get("quantidade", 1)),
+                    max(float(disponivel), 0.01),
+                ),
+                step=0.01,
+                key=chave_quantidade,
+            )
 
-    with col_lote:
-        lote = st.selectbox(
-            "Lote *",
-            options=lotes if lotes else ["—"],
-            key=chave_lote,
-        )
+            resumo = (
+                resumo_estoque_fracionado(dados_medicamento, disponivel)
+                if fracionado and not linha_medicamento.empty
+                else f"Disponível: {disponivel:g} unidade(s)"
+            )
+            st.markdown(f'<div class="resumo-estoque">{resumo}</div>', unsafe_allow_html=True)
 
-    disponivel = (
-        get_quantidade_disponivel(medicamento, lote)
-        if lote != "—"
-        else 0
-    )
-
-    linha_medicamento = estoque_medicamentos[
-        (estoque_medicamentos["Medicamento"] == medicamento)
-        & (estoque_medicamentos["Lote"] == lote)
-    ]
-    unidade_consumo = ""
-    fracionado = False
-    if not linha_medicamento.empty:
-        dados_medicamento = linha_medicamento.iloc[0]
-        fracionado = (
-            str(dados_medicamento.get("Unidade Fracionada", "Não"))
-            .strip()
-            .lower()
-            == "sim"
-        )
-        unidade_consumo = obter_unidade_consumo(dados_medicamento, fracionado)
-
-    with col_qtd:
-        quantidade = st.number_input(
-            (
-                f"Consumo ({unidade_consumo}) *"
-                if fracionado and unidade_consumo
-                else "Quantidade *"
-            ),
-            min_value=0.01,
-            max_value=max(float(disponivel), 0.01),
-            value=min(
-                float(item.get("quantidade", 1)),
-                max(float(disponivel), 0.01),
-            ),
-            step=0.01,
-            key=chave_quantidade,
-        )
-
-    with col_remover:
-        st.write("")
-        st.write("")
-        st.button(
-            "🗑️",
-            key=f"remover_medicamento_{index}",
-            on_click=remover_medicamento,
-            args=(index,),
-        )
-
-    resumo = (
-        resumo_estoque_fracionado(dados_medicamento, disponivel)
-        if fracionado and not linha_medicamento.empty
-        else f"Disponível: {disponivel:g} unidade(s)"
-    )
-    st.markdown(f'<div class="resumo-estoque">{resumo}</div>', unsafe_allow_html=True)
+            st.button(
+                "🗑️ Remover",
+                key=f"remover_medicamento_{index}",
+                on_click=remover_medicamento,
+                args=(index,),
+                width="stretch",
+            )
 
 
 st.button(
@@ -439,95 +466,103 @@ st.button(
 )
 
 
-st.markdown(
-    '<div class="grupo-materiais">'
-    '<h2 class="titulo-materiais">Materiais</h2>'
-    "</div>",
-    unsafe_allow_html=True,
-)
+titulo_materiais, acao_materiais = st.columns([8, 1])
+with titulo_materiais:
+    st.markdown(
+        '<div class="grupo-materiais">'
+        '<h2 class="titulo-materiais">Materiais</h2>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
+with acao_materiais:
+    st.button(
+        "+",
+        key="add-material-header",
+        on_click=lambda: st.session_state.materiais_aplicacao.append(
+            novo_material()
+        ),
+        help="Adicionar material",
+    )
 
 if not materiais:
     st.info("Nenhum material cadastrado.")
 else:
+    colunas_materiais = st.columns(
+        min(len(st.session_state.materiais_aplicacao), 3)
+    ) if st.session_state.materiais_aplicacao else []
+
     for index, item in enumerate(st.session_state.materiais_aplicacao):
-        st.markdown(f"### Material {index + 1}")
+        with colunas_materiais[index % 3]:
+            with st.container(border=True, key=f"material-card-{index}"):
+                st.markdown(f"### Material {index + 1}")
 
-        chave_material = f"material_{index}"
-        chave_lote = f"lote_material_{index}"
-        chave_quantidade = f"quantidade_material_{index}"
+                chave_material = f"material_{index}"
+                chave_lote = f"lote_material_{index}"
+                chave_quantidade = f"quantidade_material_{index}"
 
-        col_mat, col_lote, col_qtd, col_remover = st.columns(
-            [3, 2, 1.3, 0.7]
-        )
+                material = st.selectbox(
+                    "Material *",
+                    options=materiais,
+                    index=(
+                        materiais.index(item["material"])
+                        if item["material"] in materiais
+                        else 0
+                    ),
+                    key=chave_material,
+                )
 
-        with col_mat:
-            material = st.selectbox(
-                "Material *",
-                options=materiais,
-                index=(
-                    materiais.index(item["material"])
-                    if item["material"] in materiais
+                lotes_material = sorted(
+                    df_materiais.loc[
+                        df_materiais["Material"] == material, "Lote"
+                    ].dropna().astype(str).str.strip().unique().tolist()
+                )
+
+                if st.session_state.get(chave_lote) not in lotes_material:
+                    st.session_state[chave_lote] = (
+                        lotes_material[0] if lotes_material else "—"
+                    )
+
+                lote_material = st.selectbox(
+                    "Lote *",
+                    options=lotes_material if lotes_material else ["—"],
+                    key=chave_lote,
+                )
+
+                disponivel_material = (
+                    get_quantidade_disponivel_material(
+                        material,
+                        lote_material,
+                    )
+                    if lote_material != "—"
                     else 0
-                ),
-                key=chave_material,
-            )
+                )
 
-            lotes_material = sorted(
-                df_materiais.loc[
-                    df_materiais["Material"] == material, "Lote"
-                ].dropna().astype(str).str.strip().unique().tolist()
-            )
+                st.number_input(
+                    "Quantidade *",
+                    min_value=1,
+                    max_value=max(int(disponivel_material), 1),
+                    value=min(
+                        int(item.get("quantidade", 1)),
+                        max(int(disponivel_material), 1),
+                    ),
+                    step=1,
+                    key=chave_quantidade,
+                )
 
-        if st.session_state.get(chave_lote) not in lotes_material:
-            st.session_state[chave_lote] = (
-                lotes_material[0] if lotes_material else "—"
-            )
+                st.markdown(
+                    f'<div class="resumo-estoque">'
+                    f"Disponível: {disponivel_material} unidade(s)"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
 
-        with col_lote:
-            lote_material = st.selectbox(
-                "Lote *",
-                options=lotes_material if lotes_material else ["—"],
-                key=chave_lote,
-            )
-
-        disponivel_material = (
-            get_quantidade_disponivel_material(
-                material,
-                lote_material,
-            )
-            if lote_material != "—"
-            else 0
-        )
-
-        with col_qtd:
-            quantidade_material = st.number_input(
-                "Quantidade *",
-                min_value=1,
-                max_value=max(int(disponivel_material), 1),
-                value=min(
-                    int(item.get("quantidade", 1)),
-                    max(int(disponivel_material), 1),
-                ),
-                step=1,
-                key=chave_quantidade,
-            )
-
-        with col_remover:
-            st.write("")
-            st.write("")
-            st.button(
-                "🗑️",
-                key=f"remover_material_{index}",
-                on_click=remover_material,
-                args=(index,),
-            )
-
-        st.markdown(
-            f'<div class="resumo-estoque">'
-            f"Disponível: {disponivel_material} unidade(s)"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
+                st.button(
+                    "🗑️ Remover",
+                    key=f"remover_material_{index}",
+                    on_click=remover_material,
+                    args=(index,),
+                    width="stretch",
+                )
 
     st.button(
         "➕ Adicionar material",

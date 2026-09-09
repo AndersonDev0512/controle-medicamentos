@@ -18,6 +18,7 @@ from utils.helpers import (
     calcular_status,
     formatar_data_hora,
     normalizar_texto,
+    render_responsive_table,
 )
 from utils.constants import UNIDADES_FRACIONADAS
 
@@ -707,4 +708,4 @@ with tab_cons:
                 df_cons = df_cons[quantidades <= qtd_max]
 
         st.caption(f"{len(df_cons)} registro(s) encontrado(s)")
-        st.dataframe(df_cons, width='stretch', hide_index=True)
+        render_responsive_table(df_cons)

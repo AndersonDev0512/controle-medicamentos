@@ -5,6 +5,7 @@ from services.sheets_service import ler_estoque, ler_materiais
 from utils.helpers import (
     calcular_dias_para_vencer,
     calcular_status,
+    normalizar_texto,
     safe_float,
 )
 from utils.constants import UNIDADES_MEDIDA
@@ -40,7 +41,16 @@ def get_lotes_por_medicamento(medicamento: str) -> list[str]:
     df = get_estoque()
     if df.empty:
         return []
-    return df[df["Medicamento"] == medicamento]["Lote"].dropna().unique().tolist()
+    nomes = df["Medicamento"].map(normalizar_texto)
+    return (
+        df[nomes == normalizar_texto(medicamento)]["Lote"]
+        .dropna()
+        .astype(str)
+        .str.strip()
+        .loc[lambda valores: valores != ""]
+        .unique()
+        .tolist()
+    )
 
 
 def get_quantidade_disponivel(
@@ -53,8 +63,8 @@ def get_quantidade_disponivel(
         return 0.0
 
     filtro = (
-        (df["Medicamento"] == medicamento)
-        & (df["Lote"] == lote)
+        (df["Medicamento"].map(normalizar_texto) == normalizar_texto(medicamento))
+        & (df["Lote"].fillna("").astype(str).str.strip() == str(lote).strip())
     )
 
     linhas = df[filtro]
