@@ -13,7 +13,7 @@ load_css()
 
 pages = [
     st.Page("pages/home.py",                   title="Página Inicial",       icon="🏠", default=True),
-    st.Page("pages/dashboard.py",              title="Dashboard",             icon="📊"),
+    st.Page("pages/dashboard.py",              title="Dashboard de Controle", icon="📊"),
     st.Page("pages/estoque.py",                title="Estoque Geral",               icon="📦"),
     st.Page("pages/estoque_materiais.py",      title="Estoque de Materiais",  icon="🧴"),
     st.Page("pages/cadastrar_medicamento.py",  title="Medicamentos", icon="➕"),
@@ -28,7 +28,7 @@ pg = st.navigation(pages, position="hidden")
 # Top horizontal navigation bar using page links
 nav_items = [
     ("pages/home.py", "🏠 Página Inicial"),
-    ("pages/dashboard.py", "📊 Dashboard"),
+    ("pages/dashboard.py", "📊 Dashboard de Controle"),
     ("pages/estoque.py", "📦 Estoque Geral"),
     ("pages/cadastrar_medicamento.py", "➕ Medicamentos"),
     ("pages/cadastrar_material.py", "🧴 Materiais"),

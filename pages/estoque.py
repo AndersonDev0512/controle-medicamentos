@@ -1,6 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
+from datetime import datetime
 # pyright: reportMissingModuleSource=false
 from io import BytesIO
 from services.estoque_service import get_estoque
@@ -31,6 +32,10 @@ def gerar_pdf_estoque(dataframe: pd.DataFrame, titulo: str) -> bytes:
     if not HAS_REPORTLAB:
         raise RuntimeError("reportlab não está instalado no ambiente atual.")
 
+    dataframe = dataframe.copy()
+    dataframe["_dias_ordem"] = pd.to_numeric(dataframe.get("Dias para Vencer"), errors="coerce")
+    dataframe["_nome_ordem"] = dataframe.get("Medicamento", "").astype(str).str.casefold()
+    dataframe = dataframe.sort_values(["_dias_ordem", "_nome_ordem"], ascending=[True, True], na_position="last").drop(columns=["_dias_ordem", "_nome_ordem"])
     buffer = BytesIO()
     documento = SimpleDocTemplate(
         buffer,
@@ -60,13 +65,17 @@ def gerar_pdf_estoque(dataframe: pd.DataFrame, titulo: str) -> bytes:
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
-    documento.build([Paragraph(titulo, estilos["Title"]), Spacer(1, 0.15 * inch), tabela])
+    documento.build([Paragraph(titulo, estilos["Title"]), Paragraph(f"Relatório emitido dia {datetime.now():%d/%m/%Y %H:%M:%S}", estilos["Normal"]), Spacer(1, 0.15 * inch), tabela])
     return buffer.getvalue()
 
 def gerar_pdf_materiais(dataframe: pd.DataFrame) -> bytes:
     if not HAS_REPORTLAB:
         raise RuntimeError("reportlab não está instalado no ambiente atual.")
 
+    dataframe = dataframe.copy()
+    dataframe["_dias_ordem"] = pd.to_numeric(dataframe.get("Dias para Vencer"), errors="coerce")
+    dataframe["_nome_ordem"] = dataframe.get("Material", "").astype(str).str.casefold()
+    dataframe = dataframe.sort_values(["_dias_ordem", "_nome_ordem"], ascending=[True, True], na_position="last").drop(columns=["_dias_ordem", "_nome_ordem"])
     buffer = BytesIO()
     documento = SimpleDocTemplate(
         buffer,
@@ -96,7 +105,7 @@ def gerar_pdf_materiais(dataframe: pd.DataFrame) -> bytes:
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
     estilos = getSampleStyleSheet()
-    documento.build([Paragraph("Estoque de Materiais", estilos["Title"]), Spacer(1, 0.15 * inch), tabela])
+    documento.build([Paragraph("Estoque de Materiais", estilos["Title"]), Paragraph(f"Relatório emitido dia {datetime.now():%d/%m/%Y %H:%M:%S}", estilos["Normal"]), Spacer(1, 0.15 * inch), tabela])
     return buffer.getvalue()
 
 st.markdown('<h1 class="page-title">📦 Estoque Geral</h1>', unsafe_allow_html=True)

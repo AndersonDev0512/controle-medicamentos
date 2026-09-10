@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import json
+import html
 from datetime import date, timedelta
 from io import BytesIO
 
@@ -8,11 +9,13 @@ HAS_REPORTLAB = True
 try:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import landscape, letter
-    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import inch
-    from reportlab.platypus import Paragraph, SimpleDocTemplate, Table, TableStyle
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 except Exception:
     HAS_REPORTLAB = False
+
+from services.estoque_service import get_estoque, get_materiais
 from services.sheets_service import ler_historico, ler_registro_diario
 from utils.constants import TIPOS_MOVIMENTACAO
 from utils.helpers import render_responsive_table
@@ -30,22 +33,12 @@ def gerar_pdf_aplicacoes(dataframe: pd.DataFrame, data_referencia: str) -> bytes
         topMargin=0.3 * inch,
         bottomMargin=0.3 * inch,
     )
-    colunas = ["Data Hora", "Medicamento", "Quantidade", "Material", "Lote Material", "Aplicador", "Paciente", "Observação"]
-    dados = [colunas]
-    for _, linha in dataframe.reindex(columns=colunas, fill_value="").iterrows():
-        dados.append([str(linha[coluna]) for coluna in colunas])
-    tabela = Table(dados, repeatRows=1)
-    tabela.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 7),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#9ca3af")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f3f4f6")]),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-    ]))
-    styles = getSampleStyleSheet()
-    documento.build([Paragraph("Aplicações do dia " + data_referencia, styles["Title"]), tabela])
+    styles = _estilos_relatorio()
+    documento.build(
+        _elementos_relatorio(dataframe, data_referencia, styles),
+        onFirstPage=_rodape_relatorio,
+        onLaterPages=_rodape_relatorio,
+    )
     return buffer.getvalue()
 
 
@@ -74,6 +67,105 @@ def _texto_itens(valor: object, nome: str) -> str:
     return "<br/>".join(textos)
 
 
+def _estilos_relatorio() -> dict:
+    styles = getSampleStyleSheet()
+    return {
+        "titulo": ParagraphStyle(
+            "RelatorioTitulo", parent=styles["Title"], fontName="Helvetica-Bold",
+            fontSize=16, leading=19, textColor=colors.HexColor("#12304A"),
+            alignment=1, spaceAfter=4,
+        ),
+        "subtitulo": ParagraphStyle(
+            "RelatorioSubtitulo", parent=styles["Normal"], fontName="Helvetica",
+            fontSize=8, leading=10, textColor=colors.HexColor("#547086"), alignment=1,
+            spaceAfter=12,
+        ),
+        "dia": ParagraphStyle(
+            "RelatorioDia", parent=styles["Heading2"], fontName="Helvetica-Bold",
+            fontSize=10, leading=12, textColor=colors.white, spaceBefore=8, spaceAfter=0,
+        ),
+        "celula": ParagraphStyle(
+            "RelatorioCelula", parent=styles["BodyText"], fontName="Helvetica",
+            fontSize=7.2, leading=9, textColor=colors.HexColor("#253746"), spaceAfter=0,
+        ),
+        "celula_cabecalho": ParagraphStyle(
+            "RelatorioCabecalho", parent=styles["BodyText"], fontName="Helvetica-Bold",
+            fontSize=7.4, leading=9, textColor=colors.white, spaceAfter=0,
+        ),
+    }
+
+
+def _estilo_tabela_relatorio() -> TableStyle:
+    return TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#167D9A")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7.2),
+        ("LEADING", (0, 0), (-1, -1), 9),
+        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#B7CAD4")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#EEF7F9")]),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ])
+
+
+def _rodape_relatorio(canvas, documento) -> None:
+    canvas.saveState()
+    canvas.setStrokeColor(colors.HexColor("#B7CAD4"))
+    canvas.setLineWidth(0.4)
+    canvas.line(documento.leftMargin, 0.32 * inch, documento.pagesize[0] - documento.rightMargin, 0.32 * inch)
+    canvas.setFont("Helvetica", 6.8)
+    canvas.setFillColor(colors.HexColor("#547086"))
+    canvas.drawString(documento.leftMargin, 0.17 * inch, "Controle de Enfermagem  |  Documento assistencial")
+    canvas.drawRightString(documento.pagesize[0] - documento.rightMargin, 0.17 * inch, f"Página {canvas.getPageNumber()}")
+    canvas.restoreState()
+
+
+def _valor_linha(linha: pd.Series, coluna: str, styles: dict) -> Paragraph:
+    if coluna == "Data Hora":
+        valor = str(linha.get("Data Hora", "")).replace(" ", "<br/>", 1)
+    elif coluna == "Medicamentos Usados":
+        valor = _texto_itens(linha.get("Medicamentos JSON", ""), "medicamento") or str(linha.get("Medicamento", ""))
+    elif coluna == "Materiais Usados":
+        valor = _texto_itens(linha.get("Materiais JSON", ""), "material") or str(linha.get("Material", ""))
+    else:
+        valor = str(linha.get(coluna, ""))
+    return Paragraph(html.escape(valor, quote=False).replace("&lt;br/&gt;", "<br/>"), styles["celula"])
+
+
+def _elementos_relatorio(dataframe: pd.DataFrame, periodo: str, styles: dict) -> list:
+    elementos = [
+        Paragraph("RELATÓRIO DE APLICAÇÕES", styles["titulo"]),
+        Paragraph(f"Período: {html.escape(periodo)}  |  Documento assistencial", styles["subtitulo"]),
+    ]
+    colunas = ["Data Hora", "Paciente", "Medicamentos Usados", "Materiais Usados", "Observação"]
+    dados = dataframe.copy()
+    dados["_dt"] = pd.to_datetime(dados.get("Data Hora", ""), format="%d/%m/%Y %H:%M:%S", errors="coerce")
+    dados["_dia"] = dados["_dt"].dt.date
+    dados = dados.sort_values("_dt", ascending=True, na_position="last")
+    grupos = list(dados.groupby("_dia", dropna=False))
+    for indice, (dia, grupo) in enumerate(grupos):
+        dia_label = dia.strftime("%d/%m/%Y") if hasattr(dia, "strftime") else "Data não informada"
+        faixa_dia = Table([[Paragraph(f"DIA {dia_label}", styles["dia"])]], colWidths=[10.4 * inch])
+        faixa_dia.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#245B78")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8), ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        elementos.append(faixa_dia)
+        corpo = [[Paragraph(coluna, styles["celula_cabecalho"]) for coluna in colunas]]
+        corpo.extend([[_valor_linha(linha, coluna, styles) for coluna in colunas] for _, linha in grupo.iterrows()])
+        tabela = Table(corpo, repeatRows=1, colWidths=[1.05 * inch, 1.25 * inch, 2.85 * inch, 2.85 * inch, 2.4 * inch])
+        tabela.setStyle(_estilo_tabela_relatorio())
+        elementos.append(tabela)
+        if indice < len(grupos) - 1:
+            elementos.append(Spacer(1, 0.14 * inch))
+    return elementos
+
+
 def gerar_pdf_relatorio_personalizado(dataframe: pd.DataFrame, inicio: date, fim: date) -> bytes:
     if not HAS_REPORTLAB:
         raise RuntimeError("reportlab não está instalado no ambiente atual.")
@@ -87,31 +179,41 @@ def gerar_pdf_relatorio_personalizado(dataframe: pd.DataFrame, inicio: date, fim
         topMargin=0.3 * inch,
         bottomMargin=0.3 * inch,
     )
-    colunas = ["ID", "Data/Hora", "Paciente", "Medicamentos Usados", "Materiais Usados", "Observação"]
-    dados = [colunas]
-    for _, linha in dataframe.iterrows():
-        dados.append([
-            Paragraph(str(linha.get("ID", "")), getSampleStyleSheet()["BodyText"]),
-            Paragraph(str(linha.get("Data Hora", "")), getSampleStyleSheet()["BodyText"]),
-            Paragraph(str(linha.get("Paciente", "")), getSampleStyleSheet()["BodyText"]),
-            Paragraph(_texto_itens(linha.get("Medicamentos JSON", ""), "medicamento") or str(linha.get("Medicamento", "")), getSampleStyleSheet()["BodyText"]),
-            Paragraph(_texto_itens(linha.get("Materiais JSON", ""), "material") or str(linha.get("Material", "")), getSampleStyleSheet()["BodyText"]),
-            Paragraph(str(linha.get("Observação", "")), getSampleStyleSheet()["BodyText"]),
-        ])
+    periodo = f"{inicio.strftime('%d/%m/%Y')} a {fim.strftime('%d/%m/%Y')}"
+    documento.build(
+        _elementos_relatorio(dataframe, periodo, _estilos_relatorio()),
+        onFirstPage=_rodape_relatorio,
+        onLaterPages=_rodape_relatorio,
+    )
+    return buffer.getvalue()
 
-    tabela = Table(dados, repeatRows=1, colWidths=[0.45 * inch, 1.2 * inch, 1.4 * inch, 3 * inch, 3 * inch, 2.5 * inch])
-    tabela.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 7),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#9ca3af")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f3f4f6")]),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-    ]))
-    styles = getSampleStyleSheet()
-    titulo = f"Relatório de aplicações: {inicio.strftime('%d/%m/%Y')} a {fim.strftime('%d/%m/%Y')}"
-    documento.build([Paragraph(titulo, styles["Title"]), tabela])
+
+def gerar_pdf_estoque_personalizado(dataframe: pd.DataFrame, titulo: str, colunas: list[str]) -> bytes:
+    if not HAS_REPORTLAB:
+        raise RuntimeError("reportlab não está instalado no ambiente atual.")
+    buffer = BytesIO()
+    documento = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(letter),
+        leftMargin=0.35 * inch,
+        rightMargin=0.35 * inch,
+        topMargin=0.35 * inch,
+        bottomMargin=0.35 * inch,
+    )
+    estilos = _estilos_relatorio()
+    tabela = [[Paragraph(coluna, estilos["celula_cabecalho"]) for coluna in colunas]]
+    for _, linha in dataframe.reindex(columns=colunas, fill_value="").iterrows():
+        tabela.append([
+            Paragraph(html.escape(str(linha.get(coluna, ""))), estilos["celula"])
+            for coluna in colunas
+        ])
+    tabela_pdf = Table(tabela, repeatRows=1)
+    tabela_pdf.setStyle(_estilo_tabela_relatorio())
+    documento.build([
+        Paragraph(html.escape(titulo).upper(), estilos["titulo"]),
+        Paragraph("Documento de controle de estoque | Gerado pelo sistema", estilos["subtitulo"]),
+        tabela_pdf,
+    ], onFirstPage=_rodape_relatorio, onLaterPages=_rodape_relatorio)
     return buffer.getvalue()
 
 st.markdown('<h1 class="page-title">📊 Relatórios</h1>', unsafe_allow_html=True)
@@ -120,7 +222,7 @@ st.caption("Gere relatórios prontos ou personalizados a partir das movimentaç�
 df = ler_historico()
 df_registros = ler_registro_diario()
 
-st.markdown('<div class="section-header">Relatório personalizado</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-header">Relatório Personalizado — Aplicações</div>', unsafe_allow_html=True)
 st.caption("Relatório fechado de aplicações por intervalo de datas.")
 with st.form("form_relatorio_personalizado"):
     rel_col1, rel_col2 = st.columns(2)
@@ -152,26 +254,26 @@ if gerar_relatorio:
         relatorio_personalizado = relatorio_personalizado[
             (relatorio_personalizado["_dt"] >= pd.Timestamp(rel_inicio))
             & (relatorio_personalizado["_dt"] < pd.Timestamp(rel_fim) + pd.Timedelta(days=1))
-        ].sort_values("_dt", ascending=False)
+        ].sort_values("_dt", ascending=True)
 
         if relatorio_personalizado.empty:
             st.warning("Nenhuma aplicação registrada no período selecionado.")
         else:
             exibicao = relatorio_personalizado.copy()
-            exibicao["Medicamentos"] = exibicao.apply(
+            exibicao["Medicamentos Usados"] = exibicao.apply(
                 lambda linha: _texto_itens(linha.get("Medicamentos JSON", ""), "medicamento")
                 or str(linha.get("Medicamento", "")),
                 axis=1,
             )
-            exibicao["Materiais"] = exibicao.apply(
+            exibicao["Materiais Usados"] = exibicao.apply(
                 lambda linha: _texto_itens(linha.get("Materiais JSON", ""), "material")
                 or str(linha.get("Material", "")),
                 axis=1,
             )
-            exibicao["Medicamentos"] = exibicao["Medicamentos"].str.replace("<br/>", "\n", regex=False)
-            exibicao["Materiais"] = exibicao["Materiais"].str.replace("<br/>", "\n", regex=False)
+            exibicao["Medicamentos Usados"] = exibicao["Medicamentos Usados"].str.replace("<br/>", "\n", regex=False)
+            exibicao["Materiais Usados"] = exibicao["Materiais Usados"].str.replace("<br/>", "\n", regex=False)
             exibicao = exibicao.rename(columns={"Data Hora": "Data/Hora"})
-            colunas_exibicao = ["ID", "Data/Hora", "Paciente", "Medicamentos", "Materiais", "Aplicador", "Observação"]
+            colunas_exibicao = ["Data/Hora", "Paciente", "Medicamentos Usados", "Materiais Usados", "Observação"]
             render_responsive_table(exibicao.reindex(columns=colunas_exibicao, fill_value=""))
 
             if HAS_REPORTLAB:
@@ -190,9 +292,50 @@ if gerar_relatorio:
             else:
                 st.info("PDF indisponível: reportlab não está instalado neste ambiente.")
 
-if df.empty and df_registros.empty:
+estoque_medicamentos = get_estoque()
+estoque_materiais = get_materiais()
+
+if df.empty and df_registros.empty and estoque_medicamentos.empty and estoque_materiais.empty:
     st.info("Nenhuma movimentação registrada ainda.")
     st.stop()
+
+st.markdown('<div class="section-header">Relatório Personalizado — Estoque</div>', unsafe_allow_html=True)
+st.caption("Escolha o tipo de estoque e a situação para gerar um documento paisagem pronto para entrega.")
+estoque_col1, estoque_col2, estoque_col3 = st.columns([2, 2, 1])
+with estoque_col1:
+    tipo_estoque = st.selectbox("Inventário", ["Medicamentos", "Materiais"], key="relatorio_estoque_tipo")
+with estoque_col2:
+    status_estoque = st.selectbox("Situação", ["Todos"] + sorted(
+        (estoque_medicamentos if tipo_estoque == "Medicamentos" else estoque_materiais).get("Status", pd.Series(dtype=str)).dropna().astype(str).unique().tolist()
+    ), key="relatorio_estoque_status")
+with estoque_col3:
+    gerar_estoque = st.button("📑 Gerar estoque", width="stretch")
+
+if gerar_estoque:
+    estoque_relatorio = (estoque_medicamentos if tipo_estoque == "Medicamentos" else estoque_materiais).copy()
+    if status_estoque != "Todos" and "Status" in estoque_relatorio:
+        estoque_relatorio = estoque_relatorio[estoque_relatorio["Status"] == status_estoque]
+    colunas_estoque = (
+        ["Medicamento", "Quantidade", "Unidade de Medida", "Lote", "Data de Vencimento", "Status"]
+        if tipo_estoque == "Medicamentos"
+        else ["Material", "Quantidade", "Unidade de Medida", "Lote", "Data de Vencimento", "Status"]
+    )
+    render_responsive_table(estoque_relatorio.reindex(columns=colunas_estoque, fill_value=""))
+    if HAS_REPORTLAB:
+        pdf_estoque = gerar_pdf_estoque_personalizado(
+            estoque_relatorio,
+            f"Relatório Personalizado — Estoque de {tipo_estoque}",
+            colunas_estoque,
+        )
+        st.download_button(
+            "⬇️ Baixar relatório de estoque em PDF",
+            data=pdf_estoque,
+            file_name=f"relatorio_estoque_{tipo_estoque.lower()}.pdf",
+            mime="application/pdf",
+            width="stretch",
+        )
+    else:
+        st.info("PDF indisponível: reportlab não está instalado neste ambiente.")
 
 # ── Filters ────────────────────────────────────────────────────────────────────
 st.markdown('<div class="section-header">Filtros</div>', unsafe_allow_html=True)

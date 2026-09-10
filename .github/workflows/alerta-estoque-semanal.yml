@@ -1,0 +1,33 @@
+name: Alerta semanal de validade
+
+on:
+  schedule:
+    # Tuesday, 13:00 Brasilia time (16:00 UTC).
+    - cron: "0 16 * * 2"
+  workflow_dispatch:
+
+jobs:
+  enviar-alerta:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar projeto
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Enviar alerta de estoque
+        env:
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          ALERTA_EMAIL_REMETENTE: ${{ secrets.ALERTA_EMAIL_REMETENTE }}
+        run: python -m services.email_alerta

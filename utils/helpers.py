@@ -115,6 +115,7 @@ def load_css() -> None:
 
 
 def render_responsive_table(dataframe: pd.DataFrame) -> None:
+    """Renderiza uma tabela HTML legível no desktop e empilhada no celular."""
     if dataframe.empty:
         st.info("Nenhum registro encontrado.")
         return

@@ -7,6 +7,13 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 import services.sheets_service as sheets
+from services.email_alerta import (
+    DESTINATARIOS_PADRAO,
+    data_hora_brasilia,
+    enviar_alerta_estoque,
+    gerar_pdf_estoque_alerta,
+    texto_alerta,
+)
 from utils.config import get_config
 from utils.constants import (
     COLUNAS_ESTOQUE,
@@ -152,6 +159,36 @@ with col_clear:
         st.cache_resource.clear()
         st.rerun()
 
+st.subheader("Teste do alerta semanal de estoque")
+st.caption("O botão envia o texto e o PDF paisagem aos destinatários configurados. As credenciais SMTP não são exibidas.")
+st.write("Destinatários:", ", ".join(DESTINATARIOS_PADRAO))
+st.text_area("Prévia do texto", texto_alerta(data_hora_brasilia()), height=260, disabled=True)
+
+col_alerta_pdf, col_alerta_envio = st.columns(2)
+with col_alerta_pdf:
+    if st.button("Preparar PDF de medicamentos e materiais", width="stretch"):
+        try:
+            st.session_state.pdf_alerta_estoque = gerar_pdf_estoque_alerta()
+            st.success("PDF preparado.")
+        except Exception as error:
+            st.error(f"Não foi possível gerar o PDF: {error}")
+    pdf_alerta = st.session_state.get("pdf_alerta_estoque")
+    if pdf_alerta:
+        st.download_button(
+            "⬇️ Baixar PDF de medicamentos e materiais",
+            data=pdf_alerta,
+            file_name="relatorio_estoque_alerta.pdf",
+            mime="application/pdf",
+            width="stretch",
+        )
+with col_alerta_envio:
+    if st.button("✉️ Disparar e-mail de teste", type="primary", width="stretch"):
+        try:
+            enviar_alerta_estoque()
+            st.success("E-mail enviado com sucesso.")
+        except Exception as error:
+            st.error(f"Falha no envio: {error}")
+
 if executar or "diagnostico" not in st.session_state:
     if executar:
         with st.spinner("Consultando Google Sheets e executando leitores..."):
@@ -207,7 +244,6 @@ with st.expander("Como o código trata cada planilha"):
         "- **Registro Diário:** `ler_registro_diario()` normaliza os campos de aplicações e ignora linhas sem identificador.\n"
         "- **Histórico:** `ler_historico()` lê registros e garante `COLUNAS_HISTORICO`."
     )
-import streamlit as st
 from utils.config import get_config
 from utils.helpers import sanitize_service_account
 import services.sheets_service as sheets

@@ -106,6 +106,71 @@ st.markdown(
         padding: 1rem;
         color: #94a3b8;
     }
+
+    .lista-aplicacoes {
+        display: grid;
+        gap: 14px;
+        margin-top: 12px;
+    }
+
+    .aplicacao-item {
+        padding: 16px 18px;
+        border: 1px solid #334155;
+        border-left: 4px solid #38bdf8;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #172033, #111827);
+    }
+
+    .aplicacao-cabecalho {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 12px;
+        color: #e2e8f0 !important;
+        font-size: 0.86rem;
+    }
+
+    .aplicacao-paciente {
+        color: #f8fafc !important;
+        font-weight: 800;
+    }
+
+    .aplicacao-data {
+        color: #7dd3fc !important;
+        white-space: nowrap;
+    }
+
+    .aplicacao-grupos {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+    }
+
+    .aplicacao-grupo-titulo {
+        margin-bottom: 6px;
+        color: #a5b4fc !important;
+        font-size: 0.7rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .aplicacao-linha {
+        margin: 5px 0;
+        color: #dbeafe !important;
+        font-size: 0.82rem;
+        line-height: 1.45;
+    }
+
+    .aplicacao-detalhe {
+        color: #94a3b8 !important;
+    }
+
+    @media (max-width: 760px) {
+        .aplicacao-grupos { grid-template-columns: 1fr; }
+        .aplicacao-cabecalho { display: block; }
+        .aplicacao-data { display: block; margin-top: 4px; }
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -259,50 +324,67 @@ def resumir_json_registro(
     return "<br>".join(nomes)
 
 
-def renderizar_tabela_aplicacoes(dados: pd.DataFrame) -> str:
-    """Renderiza todas as aplicações com largura baseada no conteúdo."""
+def _unidade_medicamento(medicamento: str, lote: str) -> str:
+    linhas = estoque_medicamentos[
+        (estoque_medicamentos["Medicamento"].map(normalizar_texto) == normalizar_texto(medicamento))
+        & (estoque_medicamentos["Lote"].fillna("").astype(str).str.strip() == str(lote).strip())
+    ]
+    if linhas.empty:
+        return "unidade(s)"
+    linha = linhas.iloc[0]
+    return obter_unidade_consumo(linha, str(linha.get("Unidade Fracionada", "")).strip().lower() == "sim") or str(linha.get("Unidade de Medida", "unidade(s)"))
+
+
+def _unidade_material(material: str, lote: str) -> str:
+    linhas = df_materiais[
+        (df_materiais["Material"].map(normalizar_texto) == normalizar_texto(material))
+        & (df_materiais["Lote"].fillna("").astype(str).str.strip() == str(lote).strip())
+    ]
+    return str(linhas.iloc[0].get("Unidade de Medida", "unidade(s)")) if not linhas.empty else "unidade(s)"
+
+
+def _linhas_lista_aplicacao(valor: object, tipo: str, unidade_fallback: str = "unidade(s)") -> list[str]:
+    try:
+        itens = json.loads(str(valor)) if str(valor).strip() else []
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    if isinstance(itens, dict):
+        itens = itens.get("itens", [itens])
+    if not isinstance(itens, list):
+        return []
+    linhas = []
+    for indice, item in enumerate(itens, start=1):
+        if not isinstance(item, dict):
+            continue
+        nome = item.get(tipo, "")
+        lote = str(item.get("lote", "")).strip()
+        quantidade = item.get("quantidade", "")
+        unidade = str(item.get("unidade", "")).strip() or ( _unidade_medicamento(nome, lote) if tipo == "medicamento" else _unidade_material(nome, lote) ) or unidade_fallback
+        detalhe = f"{quantidade} {unidade}" if quantidade != "" else "Quantidade não informada"
+        lote_texto = f"Lote: {lote or 'não informado'}"
+        linhas.append(f"<div class='aplicacao-linha'><b>{indice}. {html.escape(str(nome))}</b><br><span class='aplicacao-detalhe'>{html.escape(lote_texto)} · {html.escape(detalhe)}</span></div>")
+    return linhas
+
+
+def renderizar_lista_aplicacoes(dados: pd.DataFrame) -> str:
+    """Renderiza aplicações como cartões legíveis e espaçados."""
     if dados.empty:
         return '<div class="tabela-vazia">Nenhuma aplicação registrada ainda.</div>'
-
-    colunas = list(dados.columns)
-    larguras = {}
-    for coluna in colunas:
-        maior_linha = max(
-            [len(str(coluna))]
-            + [
-                max(
-                    (
-                        len(parte)
-                        for parte in str(valor).replace("<br>", "\n").split("\n")
-                    ),
-                    default=0,
-                )
-                for valor in dados[coluna].fillna("")
-            ]
-        )
-        larguras[coluna] = min(max(maior_linha + 2, 8), 42)
-
-    cabecalho = "".join(
-        f'<th style="width:{larguras[coluna]}ch">{html.escape(str(coluna))}</th>'
-        for coluna in colunas
-    )
-    linhas = []
+    cards = []
     for _, linha in dados.iterrows():
-        celulas = []
-        for coluna in colunas:
-            valor = html.escape(
-                str(linha.get(coluna, "")).replace("<br>", "\n")
-            ).replace("\n", "<br>")
-            celulas.append(f"<td>{valor}</td>")
-        linhas.append(f"<tr>{''.join(celulas)}</tr>")
-
-    return (
-        '<div class="tabela-aplicacoes-wrapper">'
-        '<table class="tabela-aplicacoes">'
-        f"<thead><tr>{cabecalho}</tr></thead>"
-        f"<tbody>{''.join(linhas)}</tbody>"
-        "</table></div>"
-    )
+        medicamentos_html = "".join(_linhas_lista_aplicacao(linha.get("Medicamentos JSON", ""), "medicamento")) or "<div class='aplicacao-linha'>Nenhum medicamento detalhado</div>"
+        materiais_html = "".join(_linhas_lista_aplicacao(linha.get("Materiais JSON", ""), "material")) or "<div class='aplicacao-linha'>Nenhum material utilizado</div>"
+        cards.append(
+            '<article class="aplicacao-item">'
+            f'<div class="aplicacao-cabecalho"><span class="aplicacao-paciente">Paciente: {html.escape(str(linha.get("Paciente", "")))}</span><span class="aplicacao-data">{html.escape(str(linha.get("Data Hora", "")))}</span></div>'
+            '<div class="aplicacao-grupos">'
+            f'<div><div class="aplicacao-grupo-titulo">Medicamentos utilizados</div>{medicamentos_html}</div>'
+            f'<div><div class="aplicacao-grupo-titulo">Materiais utilizados</div>{materiais_html}</div>'
+            '</div>'
+            f'<div class="aplicacao-detalhe">Observação: {html.escape(str(linha.get("Observação", "")))}</div>'
+            '</article>'
+        )
+    return f'<div class="lista-aplicacoes">{"".join(cards)}</div>'
 
 
 st.markdown(
@@ -364,7 +446,7 @@ colunas_medicamentos = st.columns(
 for index, item in enumerate(st.session_state.medicamentos_aplicacao):
     with colunas_medicamentos[index % 3]:
         with st.container(border=True, key=f"medication-card-{index}"):
-            st.markdown(f"### Medicamento {index + 1}")
+            st.markdown(f"### {index + 1}. Medicamento")
 
             chave_medicamento = f"medicamento_{index}"
             chave_lote = f"lote_medicamento_{index}"
@@ -422,6 +504,12 @@ for index, item in enumerate(st.session_state.medicamentos_aplicacao):
                     == "sim"
                 )
                 unidade_consumo = obter_unidade_consumo(dados_medicamento, fracionado)
+
+            st.markdown(
+                f'<div class="resumo-estoque"><b>Unidade de consumo:</b> '
+                f'{html.escape(unidade_consumo or "unidade(s)")}</div>',
+                unsafe_allow_html=True,
+            )
 
             quantidade = st.number_input(
                 (
@@ -494,7 +582,7 @@ else:
     for index, item in enumerate(st.session_state.materiais_aplicacao):
         with colunas_materiais[index % 3]:
             with st.container(border=True, key=f"material-card-{index}"):
-                st.markdown(f"### Material {index + 1}")
+                st.markdown(f"### {index + 1}. Material")
 
                 chave_material = f"material_{index}"
                 chave_lote = f"lote_material_{index}"
@@ -526,6 +614,21 @@ else:
                     "Lote *",
                     options=lotes_material if lotes_material else ["—"],
                     key=chave_lote,
+                )
+
+                linha_material = df_materiais[
+                    (df_materiais["Material"] == material)
+                    & (df_materiais["Lote"].fillna("").astype(str).str.strip() == str(lote_material).strip())
+                ]
+                unidade_material = (
+                    str(linha_material.iloc[0].get("Unidade de Medida", "unidade(s)"))
+                    if not linha_material.empty else "unidade(s)"
+                )
+
+                st.markdown(
+                    f'<div class="resumo-estoque"><b>Unidade de estoque:</b> '
+                    f'{html.escape(unidade_material)}</div>',
+                    unsafe_allow_html=True,
                 )
 
                 disponivel_material = (
@@ -753,19 +856,7 @@ else:
         axis=1,
     )
 
-    colunas = [
-        "ID",
-        "Data Hora",
-        "Medicamento",
-        "Lote",
-        "Quantidade Medicamento",
-        "Quantidade Material",
-        "Material",
-        "Lote Material",
-        "Aplicador",
-        "Paciente",
-        "Observação",
-    ]
+    colunas = ["Data Hora", "Paciente", "Medicamentos JSON", "Materiais JSON", "Observação"]
 
     colunas_existentes = [
         coluna
@@ -774,4 +865,4 @@ else:
     ]
 
     dados = recentes[colunas_existentes].fillna("")
-    st.markdown(renderizar_tabela_aplicacoes(dados), unsafe_allow_html=True)
+    st.markdown(renderizar_lista_aplicacoes(dados), unsafe_allow_html=True)
