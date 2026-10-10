@@ -329,6 +329,7 @@ p, span, div, label, li {
 .stNumberInput > div > div > input,
 .stTextArea > div > div > textarea,
 .stDateInput > div > div > input,
+.stTimeInput > div > div > input,
 [data-testid="stTextArea"] textarea {
     background: #ffffff !important;
     border: 1px solid var(--color-border) !important;
@@ -338,8 +339,24 @@ p, span, div, label, li {
     caret-color: #111827 !important;
 }
 
+.stTimeInput [data-testid="stTimeInputTimeDisplay"],
+.stTimeInput [data-testid="stTimeInputTimeDisplay"] > div,
+.stTimeInput [data-testid="stTimeInputTimeDisplay"] [role="group"] {
+    background-color: #ffffff !important;
+    border: 1px solid var(--color-border) !important;
+    border-radius: 8px !important;
+    color: #111827 !important;
+}
+
+.stTimeInput [data-testid="stTimeInputTimeDisplay"] [role="spinbutton"],
+.stTimeInput [data-testid="stTimeInputTimeDisplay"] [data-type="literal"] {
+    color: #111827 !important;
+    -webkit-text-fill-color: #111827 !important;
+}
+
 .stTextInput > div > div > input::placeholder,
 .stTextArea > div > div > textarea::placeholder,
+.stTimeInput > div > div > input::placeholder,
 [data-testid="stTextArea"] textarea::placeholder {
     color: #6b7280 !important;
     -webkit-text-fill-color: #6b7280 !important;
@@ -347,7 +364,8 @@ p, span, div, label, li {
 
 .stTextInput > div > div > input:focus,
 .stNumberInput > div > div > input:focus,
-.stTextArea > div > div > textarea:focus {
+.stTextArea > div > div > textarea:focus,
+.stTimeInput > div > div > input:focus {
     border-color: var(--color-primary) !important;
     box-shadow: 0 0 0 2px rgba(37,99,235,.22) !important;
     outline: none !important;
@@ -356,6 +374,7 @@ p, span, div, label, li {
 .stTextInput label,
 .stNumberInput label,
 .stTextArea label,
+.stTimeInput label,
 .stSelectbox label,
 .stDateInput label,
 .stMultiSelect label {
@@ -368,14 +387,28 @@ p, span, div, label, li {
 
 /* Selectbox */
 .stSelectbox > div > div {
-    background: var(--bg-card) !important;
+    background: #ffffff !important;
     border: 1px solid var(--color-border) !important;
     border-radius: 8px !important;
-    color: var(--color-text) !important;
+    color: #111827 !important;
+}
+
+.stSelectbox [role="group"],
+.stSelectbox [role="combobox"],
+.stSelectbox [role="combobox"] + button {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    -webkit-text-fill-color: #111827 !important;
+}
+
+.stSelectbox [role="combobox"] + button svg {
+    color: #111827 !important;
+    fill: #111827 !important;
 }
 
 .stSelectbox [data-baseweb="select"] > div,
 .stSelectbox [data-baseweb="select"] input,
+.stSelectbox [role="combobox"],
 .stDateInput [data-baseweb="input"] > div,
 .stDateInput [data-baseweb="input"] input,
 .stNumberInput [data-baseweb="input"] > div {

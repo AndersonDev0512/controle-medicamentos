@@ -2,6 +2,7 @@ import json
 import html
 import pandas as pd
 import streamlit as st
+from datetime import date, datetime, time
 
 from services.aplicacao_service import (
     registrar_aplicacao,
@@ -16,7 +17,7 @@ from services.estoque_service import (
     get_quantidade_disponivel_material,
 )
 from services.sheets_service import ler_registro_diario
-from utils.helpers import formatar_data_hora, normalizar_texto
+from utils.helpers import normalizar_texto
 
 
 st.markdown(
@@ -392,7 +393,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-coluna1, coluna2 = st.columns(2)
+coluna1, coluna2, coluna3 = st.columns(3)
 
 with coluna1:
     aplicador = st.text_input(
@@ -402,11 +403,18 @@ with coluna1:
     )
 
 with coluna2:
-    st.text_input(
-        "Data/Hora",
-        value=formatar_data_hora(),
-        disabled=True,
-        key="data_hora",
+    data_aplicacao = st.date_input(
+        "Data da aplicação *",
+        value=date.today(),
+        format="DD/MM/YYYY",
+        key="data_aplicacao",
+    )
+
+with coluna3:
+    hora_aplicacao = st.time_input(
+        "Hora da aplicação *",
+        value=datetime.now().time().replace(second=0, microsecond=0),
+        key="hora_aplicacao",
     )
 
 paciente = st.text_input(
@@ -419,6 +427,40 @@ observacao = st.text_area(
     placeholder="Digite uma observação opcional.",
     key="observacao",
 )
+
+dar_baixa_estoque = st.checkbox(
+    "Dar baixa no estoque nesta aplicação",
+    value=True,
+    help="Desmarque quando o registro for apenas histórico. Nesse caso, as quantidades não serão alteradas no estoque.",
+    key="dar_baixa_estoque",
+)
+
+justificativa_retroativa = ""
+if data_aplicacao < date.today():
+    st.markdown(
+        """
+        <style>
+        .st-key-justificativa-retroativa textarea {
+            background-color: #ffffff !important;
+            color: #111827 !important;
+            -webkit-text-fill-color: #111827 !important;
+            caret-color: #111827 !important;
+        }
+        .st-key-justificativa-retroativa textarea::placeholder {
+            color: #6b7280 !important;
+            -webkit-text-fill-color: #6b7280 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    with st.container(key="justificativa-retroativa"):
+        justificativa_retroativa = st.text_area(
+            "Justificativa da aplicação retroativa *",
+            placeholder="Obrigatória quando a data da aplicação for anterior a hoje.",
+            help="Informe por que a aplicação está sendo lançada depois da data em que ocorreu.",
+            key="justificativa_retroativa",
+        )
 
 
 titulo_medicamentos, acao_medicamentos = st.columns([8, 1])
@@ -511,6 +553,11 @@ for index, item in enumerate(st.session_state.medicamentos_aplicacao):
                 unsafe_allow_html=True,
             )
 
+            max_quantidade_medicamento = (
+                max(float(disponivel), 0.01)
+                if dar_baixa_estoque
+                else 1_000_000.0
+            )
             quantidade = st.number_input(
                 (
                     f"Consumo ({unidade_consumo}) *"
@@ -518,10 +565,10 @@ for index, item in enumerate(st.session_state.medicamentos_aplicacao):
                     else "Quantidade *"
                 ),
                 min_value=0.01,
-                max_value=max(float(disponivel), 0.01),
+                max_value=max_quantidade_medicamento,
                 value=min(
                     float(item.get("quantidade", 1)),
-                    max(float(disponivel), 0.01),
+                    max_quantidade_medicamento,
                 ),
                 step=0.01,
                 key=chave_quantidade,
@@ -640,13 +687,18 @@ else:
                     else 0
                 )
 
+                max_quantidade_material = (
+                    max(int(disponivel_material), 1)
+                    if dar_baixa_estoque
+                    else 1_000_000
+                )
                 st.number_input(
                     "Quantidade *",
                     min_value=1,
-                    max_value=max(int(disponivel_material), 1),
+                    max_value=max_quantidade_material,
                     value=min(
                         int(item.get("quantidade", 1)),
-                        max(int(disponivel_material), 1),
+                        max_quantidade_material,
                     ),
                     step=1,
                     key=chave_quantidade,
@@ -691,12 +743,23 @@ if registrar:
     erros: list[str] = []
     registros_medicamentos: list[dict] = []
     registros_materiais: list[dict] = []
+    data_hora_aplicacao = datetime.combine(
+        data_aplicacao,
+        hora_aplicacao or time(0, 0),
+    ).strftime("%d/%m/%Y %H:%M:%S")
+    aplicacao_retroativa = data_aplicacao < date.today()
 
     if not aplicador.strip():
         erros.append("Informe o aplicador.")
 
     if not paciente.strip():
         erros.append("Informe o paciente.")
+
+    if data_aplicacao > date.today():
+        erros.append("A data da aplicação não pode ser futura.")
+
+    if aplicacao_retroativa and not justificativa_retroativa.strip():
+        erros.append("Informe a justificativa para a aplicação retroativa.")
 
     for index in range(len(st.session_state.medicamentos_aplicacao)):
         medicamento = st.session_state.get(
@@ -791,6 +854,9 @@ if registrar:
             aplicador=aplicador.strip(),
             paciente=paciente.strip(),
             observacao=observacao.strip(),
+            justificativa=justificativa_retroativa.strip(),
+            data_hora=data_hora_aplicacao,
+            dar_baixa_estoque=dar_baixa_estoque,
         )
 
         if sucesso:

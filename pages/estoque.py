@@ -110,7 +110,40 @@ def gerar_pdf_materiais(dataframe: pd.DataFrame) -> bytes:
 
 st.markdown('<h1 class="page-title">📦 Estoque Geral</h1>', unsafe_allow_html=True)
 
-tab_estoque_medicamentos, tab_estoque_materiais = st.tabs(["💊 Estoque de Medicamentos", "🧴 Estoque de Materiais"])
+tab_estoque_medicamentos, tab_estoque_materiais, tab_planilha_medicamentos = st.tabs([
+    "💊 Estoque de Medicamentos",
+    "🧴 Estoque de Materiais",
+    "📋 Planilha de Medicamentos",
+])
+
+with tab_planilha_medicamentos:
+    st.markdown(
+        '<div class="section-header">Planilha de Medicamentos</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption("Visualização direta da planilha usada pelo estoque de medicamentos.")
+
+    config = get_config()
+    spreadsheet_id = config.spreadsheet_id
+
+    if "/spreadsheets/d/" in spreadsheet_id:
+        spreadsheet_id = (
+            spreadsheet_id
+            .split("/spreadsheets/d/", 1)[1]
+            .split("/", 1)[0]
+        )
+
+    if spreadsheet_id:
+        components.iframe(
+            (
+                "https://docs.google.com/spreadsheets/d/"
+                f"{spreadsheet_id}/edit?gid=0&rm=minimal#gid=0"
+            ),
+            height=860,
+            scrolling=True,
+        )
+    else:
+        st.warning("Configure o SPREADSHEET_ID para visualizar a planilha de medicamentos.")
 
 with tab_estoque_medicamentos:
     df = get_estoque()
@@ -463,32 +496,6 @@ with tab_estoque_medicamentos:
                 "PDF indisponível: reportlab não está instalado."
             )
 
-    config = get_config()
-    spreadsheet_id = config.spreadsheet_id
-
-    if "/spreadsheets/d/" in spreadsheet_id:
-        spreadsheet_id = (
-            spreadsheet_id
-            .split("/spreadsheets/d/", 1)[1]
-            .split("/", 1)[0]
-        )
-
-    if spreadsheet_id:
-        st.markdown(
-            '<div class="section-header">'
-            "Planilha de Estoque de Medicamentos"
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
-        components.iframe(
-            (
-                "https://docs.google.com/spreadsheets/d/"
-                f"{spreadsheet_id}/edit?gid=0#gid=0"
-            ),
-            height=620,
-            scrolling=True,
-        )
 with tab_estoque_materiais:
     df = get_materiais()
 

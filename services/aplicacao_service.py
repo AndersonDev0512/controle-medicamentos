@@ -166,6 +166,8 @@ def registrar_aplicacao(
     somente_material: bool = False,
     salvar_registro: bool = True,
     salvar_historico: bool = True,
+    data_hora: str | None = None,
+    dar_baixa_estoque: bool = True,
 ) -> tuple[bool, str]:
     if not paciente.strip():
         return False, "Nome do paciente é obrigatório."
@@ -190,7 +192,7 @@ def registrar_aplicacao(
     indice_medicamento = indices_medicamento[0]
     linha_medicamento = df_estoque.loc[indice_medicamento]
 
-    if somente_material:
+    if somente_material or not dar_baixa_estoque:
         sucesso, mensagem, alteracoes_medicamento = True, "", {}
     else:
         sucesso, mensagem, alteracoes_medicamento = _calcular_estoque_medicamento(
@@ -241,7 +243,7 @@ def registrar_aplicacao(
         if quantidade_material <= 0:
             return False, "Informe a quantidade de material utilizada."
 
-        if quantidade_material > material_quantidade_anterior:
+        if dar_baixa_estoque and quantidade_material > material_quantidade_anterior:
             return (
                 False,
                 "Estoque de material insuficiente. "
@@ -251,6 +253,8 @@ def registrar_aplicacao(
 
         material_quantidade_nova = (
             material_quantidade_anterior - quantidade_material
+            if dar_baixa_estoque
+            else material_quantidade_anterior
         )
 
         dados_material = {
@@ -268,13 +272,13 @@ def registrar_aplicacao(
     else:
         quantidade_material = 0
 
-    if not somente_material and not atualizar_medicamento(
+    if dar_baixa_estoque and not somente_material and not atualizar_medicamento(
         medicamento_sheet_row,
         dados_medicamento,
     ):
         return False, "Erro ao atualizar estoque do medicamento."
 
-    if dados_material is not None and material_sheet_row is not None:
+    if dar_baixa_estoque and dados_material is not None and material_sheet_row is not None:
         if not atualizar_material(
             material_sheet_row,
             dados_material,
@@ -297,7 +301,7 @@ def registrar_aplicacao(
     get_estoque.clear()
     get_materiais.clear()
 
-    data_hora = formatar_data_hora()
+    data_hora = data_hora or formatar_data_hora()
     id_registro = id_registro if id_registro is not None else proximo_id_registro()
 
     medicamentos_registro = [dict(item) for item in (medicamentos_json or [{
@@ -343,6 +347,20 @@ def registrar_aplicacao(
                     linha_item.iloc[0].get("Unidade de Medida", "")
                 ).strip()
 
+    observacao_registro = observacao.strip()
+    if justificativa.strip():
+        observacao_registro = (
+            f"{observacao_registro} | Justificativa retroativa: {justificativa.strip()}"
+            if observacao_registro
+            else f"Justificativa retroativa: {justificativa.strip()}"
+        )
+    if not dar_baixa_estoque:
+        observacao_registro = (
+            f"{observacao_registro} | Sem baixa de estoque"
+            if observacao_registro
+            else "Sem baixa de estoque"
+        )
+
     registro = {
         "ID": id_registro,
         "Data Hora": data_hora,
@@ -357,10 +375,7 @@ def registrar_aplicacao(
         "Lote Material": lote_material or "",
         "Aplicador": aplicador,
         "Paciente": paciente,
-        "Observação": (
-            observacao.strip()
-            or f"Aplicação - Lote: {lote}"
-        ),
+        "Observação": observacao_registro or f"Aplicação - Lote: {lote}",
         "Medicamentos JSON": json.dumps(
             medicamentos_registro,
             ensure_ascii=False,
@@ -372,7 +387,7 @@ def registrar_aplicacao(
     }
 
     if salvar_registro and not adicionar_registro_diario(registro):
-        if not somente_material:
+        if dar_baixa_estoque and not somente_material:
             atualizar_medicamento(
             medicamento_sheet_row,
             {
@@ -392,7 +407,7 @@ def registrar_aplicacao(
             },
         )
 
-        if dados_material is not None and material_sheet_row is not None:
+        if dar_baixa_estoque and dados_material is not None and material_sheet_row is not None:
             atualizar_material(
                 material_sheet_row,
                 {
@@ -411,10 +426,7 @@ def registrar_aplicacao(
         "Tipo": "Saída",
         "Medicamento": "" if somente_material else medicamento,
         "Quantidade": _formatar_quantidade(quantidade),
-        "Observação": (
-            observacao.strip()
-            or f"Aplicação - Lote: {lote}"
-        ),
+        "Observação": observacao_registro or f"Aplicação - Lote: {lote}",
         "Aplicador": aplicador,
         "Paciente": paciente,
         "Material": material or "",
@@ -422,7 +434,7 @@ def registrar_aplicacao(
     }
 
     if salvar_historico and not adicionar_historico(historico):
-        if not somente_material:
+        if dar_baixa_estoque and not somente_material:
             atualizar_medicamento(
             medicamento_sheet_row,
             {
@@ -442,7 +454,7 @@ def registrar_aplicacao(
             },
         )
 
-        if dados_material is not None and material_sheet_row is not None:
+        if dar_baixa_estoque and dados_material is not None and material_sheet_row is not None:
             atualizar_material(
                 material_sheet_row,
                 {
@@ -461,7 +473,7 @@ def registrar_aplicacao(
         0,
     )
 
-    if not somente_material:
+    if dar_baixa_estoque and not somente_material:
         auditar_alteracao(
             modulo="Aplicação",
             registro={
@@ -483,7 +495,7 @@ def registrar_aplicacao(
             usuario=aplicador,
         )
 
-    if (
+    if dar_baixa_estoque and (
         material
         and lote_material
         and material_quantidade_anterior is not None
@@ -516,6 +528,9 @@ def registrar_aplicacao_multiplos(
     aplicador: str,
     paciente: str,
     observacao: str = "",
+    justificativa: str = "",
+    data_hora: str | None = None,
+    dar_baixa_estoque: bool = True,
 ) -> tuple[bool, str]:
     """Registra os itens selecionados pela tela de aplicação.
 
@@ -602,7 +617,9 @@ def registrar_aplicacao_multiplos(
             aplicador=aplicador,
             paciente=paciente,
             observacao=observacao,
-            justificativa=observacao,
+            justificativa=justificativa,
+            data_hora=data_hora,
+            dar_baixa_estoque=dar_baixa_estoque,
             id_registro=proximo_id,
             medicamentos_json=medicamentos_json,
             materiais_json=materiais_json if indice == 0 else [],
@@ -627,7 +644,9 @@ def registrar_aplicacao_multiplos(
                 aplicador=aplicador,
                 paciente=paciente,
                 observacao=observacao,
-                justificativa=observacao,
+                justificativa=justificativa,
+                data_hora=data_hora,
+                dar_baixa_estoque=dar_baixa_estoque,
                 id_registro=proximo_id,
                 medicamentos_json=[],
                 materiais_json=[{
