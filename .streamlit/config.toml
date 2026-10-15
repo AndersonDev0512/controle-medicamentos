@@ -1,21 +1,25 @@
 [theme]
 base = "dark"
-primaryColor = "#3b82f6"
-backgroundColor = "#0f172a"
-secondaryBackgroundColor = "#1e293b"
-textColor = "#f8fafc"
-linkColor = "#60a5fa"
-borderColor = "#334155"
-dataframeBorderColor = "#334155"
-dataframeHeaderBackgroundColor = "#1e293b"
+primaryColor = "#2563EB"
+backgroundColor = "#061329"
+secondaryBackgroundColor = "#0B1730"
+textColor = "#FFFFFF"
+linkColor = "#60A5FA"
+borderColor = "#1E3A66"
+dataframeBorderColor = "#1E3A66"
+dataframeHeaderBackgroundColor = "#0F1F3D"
 font = "sans-serif"
-baseRadius = "8px"
-buttonRadius = "8px"
+baseRadius = "10px"
+buttonRadius = "10px"
 showWidgetBorder = true
 showSidebarBorder = true
 
 [theme.sidebar]
-backgroundColor = "#111827"
-secondaryBackgroundColor = "#1e293b"
-textColor = "#f8fafc"
-borderColor = "#334155"
+backgroundColor = "#0B1730"
+secondaryBackgroundColor = "#0F1F3D"
+textColor = "#FFFFFF"
+borderColor = "#1E3A66"
+
+[server]
+# Serve a pasta static/ em app/static/ (imagens do hero e do fundo)
+enableStaticServing = true

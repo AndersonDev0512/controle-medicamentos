@@ -14,13 +14,14 @@ from services.sheets_service import (
     excluir_medicamento,
 )
 from utils.helpers import (
+    carrinho_sn,
     calcular_dias_para_vencer,
     calcular_status,
     formatar_data_hora,
     normalizar_texto,
     render_responsive_table,
 )
-from utils.constants import UNIDADES_FRACIONADAS
+from utils.constants import CARRINHO_NAO, CARRINHO_SIM, UNIDADES_FRACIONADAS
 
 
 def mostrar_toast_pendente():
@@ -180,6 +181,15 @@ with tab_cad:
                     key=f"m_val_{row_id}",
                 )
 
+                st.segmented_control(
+                    "Carrinho de Parada? *",
+                    options=["Não", "Sim"],
+                    default="Não",
+                    required=True,
+                    key=f"m_carrinho_{row_id}",
+                    help="Marque Sim se este lote fica no carrinho de parada (emergência).",
+                )
+
                 st.text_area(
                     "Observações",
                     height=100,
@@ -280,6 +290,12 @@ with tab_cad:
                 "",
             ).strip()
 
+            carrinho = (
+                CARRINHO_SIM
+                if st.session_state.get(f"m_carrinho_{row_id}", "Não") == "Sim"
+                else CARRINHO_NAO
+            )
+
             if not nome:
                 erros.append(
                     f"Medicamento {indice}: nome é obrigatório."
@@ -337,6 +353,7 @@ with tab_cad:
                     "Lote": lote,
                     "Data de Vencimento": validade_formatada,
                     "Observações": observacoes,
+                    "Carrinho de Parada": carrinho,
                 }
             )
 
@@ -444,6 +461,14 @@ with tab_edit:
             with c2:
                 e_lote = st.text_input("Lote", value=str(row["Lote"]))
                 e_val = st.date_input("Validade", value=val_atual, format="DD/MM/YYYY")
+                e_carrinho = st.segmented_control(
+                    "Carrinho de Parada?",
+                    options=["Não", "Sim"],
+                    default="Sim" if carrinho_sn(row.get("Carrinho de Parada")) == CARRINHO_SIM else "Não",
+                    required=True,
+                    key=f"e_carrinho_{sheet_row}",
+                    help="Marque Sim se este lote fica no carrinho de parada (emergência).",
+                )
                 e_obs = st.text_area("Observações", value=str(row.get("Observações", "")), height=100)
             usuario = st.text_input("Usuário responsável *")
             justificativa = st.text_area("Justificativa obrigatória *", placeholder="Descreva a razão da alteração.")
@@ -466,6 +491,7 @@ with tab_edit:
                     "Lote": e_lote.strip(),
                     "Data de Vencimento": e_val.strftime("%d/%m/%Y"),
                     "Observações": e_obs.strip(),
+                    "Carrinho de Parada": CARRINHO_SIM if e_carrinho == "Sim" else CARRINHO_NAO,
                 }
                 if atualizar_medicamento(sheet_row, dados):
                     for campo, valor_novo in dados.items():
@@ -678,6 +704,13 @@ with tab_cons:
                 key="qtd_max_cons",
                 help="Use 0 para não limitar.",
             )
+
+        so_carrinho = st.checkbox(
+            "Somente itens do Carrinho de Parada",
+            key="cons_med_carrinho",
+        )
+        if so_carrinho:
+            df_cons = df_cons[df_cons["Carrinho de Parada"] == CARRINHO_SIM]
 
         if pesq.strip() and campos_pesquisa:
             termo = normalizar_texto(pesq)

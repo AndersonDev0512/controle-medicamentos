@@ -2,6 +2,10 @@ import traceback
 import streamlit as st
 import streamlit.components.v1 as components
 from utils.helpers import load_css
+from utils.ui import icon
+from utils.auth import exigir_login, login_ativo
+from services.alerta_service import get_alertas, get_alertas_materiais, ordenar_alertas
+from utils.components import notification_drawer
 
 st.set_page_config(
     page_title="Controle de Enfermagem",
@@ -10,117 +14,113 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 load_css()
+exigir_login()
 
-pages = [
-    st.Page("pages/home.py",                   title="Página Inicial",       icon="🏠", default=True),
-    st.Page("pages/dashboard.py",              title="Dashboard de Controle", icon="📊"),
-    st.Page("pages/estoque.py",                title="Estoque Geral",               icon="📦"),
-    st.Page("pages/estoque_materiais.py",      title="Estoque de Materiais",  icon="🧴"),
-    st.Page("pages/cadastrar_medicamento.py",  title="Medicamentos", icon="➕"),
-    st.Page("pages/cadastrar_material.py",     title="Materiais",     icon="🧴"),
-    st.Page("pages/registrar_aplicacao.py",    title="Registrar Aplicação",   icon="💉"),
-    st.Page("pages/historico.py",              title="Relatórios",            icon="📊"),
-    st.Page("pages/debug.py",                  title="Debug",                 icon="🐞"),
-]
+paginas = {
+    "pages/home.py":                  st.Page("pages/home.py",                  title="Página Inicial",        icon="🏠", default=True),
+    "pages/dashboard.py":             st.Page("pages/dashboard.py",             title="Dashboard de Controle", icon="📊"),
+    "pages/estoque.py":               st.Page("pages/estoque.py",               title="Estoque Geral",         icon="📦"),
+    "pages/estoque_materiais.py":     st.Page("pages/estoque_materiais.py",     title="Estoque de Materiais",  icon="🧴"),
+    "pages/cadastrar_medicamento.py": st.Page("pages/cadastrar_medicamento.py", title="Medicamentos",          icon="➕"),
+    "pages/cadastrar_material.py":    st.Page("pages/cadastrar_material.py",    title="Materiais",             icon="🧴"),
+    "pages/registrar_aplicacao.py":   st.Page("pages/registrar_aplicacao.py",   title="Registrar Aplicação",   icon="💉"),
+    "pages/historico.py":             st.Page("pages/historico.py",             title="Relatórios",            icon="📊"),
+    "pages/debug.py":                 st.Page("pages/debug.py",                 title="Debug",                 icon="🐞"),
+}
+pages = list(paginas.values())
 
 pg = st.navigation(pages, position="hidden")
 
-# Top horizontal navigation bar using page links
+# Barra de navegação superior (estilos em assets/style.css, seção TOP NAV)
 nav_items = [
-    ("pages/home.py", "🏠 Página Inicial"),
-    ("pages/dashboard.py", "📊 Dashboard de Controle"),
-    ("pages/estoque.py", "📦 Estoque Geral"),
-    ("pages/cadastrar_medicamento.py", "➕ Medicamentos"),
-    ("pages/cadastrar_material.py", "🧴 Materiais"),
-    ("pages/registrar_aplicacao.py", "💉 Aplicações"),
-    ("pages/historico.py", "📊 Relatórios"),
+    ("pages/home.py", "Página Inicial", "home"),
+    ("pages/dashboard.py", "Dashboard de Controle", "layout-dashboard"),
+    ("pages/estoque.py", "Estoque Geral", "boxes"),
+    ("pages/cadastrar_medicamento.py", "Medicamentos", "pill"),
+    ("pages/cadastrar_material.py", "Materiais", "package"),
+    ("pages/registrar_aplicacao.py", "Aplicações", "syringe"),
+    ("pages/historico.py", "Relatórios", "file-chart"),
 ]
 
-# CSS for top nav (fixed) and spacing for main content
-st.markdown(
-    """
-    <style>
-    .top-nav {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        z-index: 9999;
-        background: linear-gradient(90deg, #071228 0%, #052031 50%, #061827 100%);
-        padding: 8px 22px;
-        display: flex;
-        align-items: center;
-        gap: 18px;
-        border-bottom: 1px solid rgba(255,255,255,0.04);
-        box-shadow: 0 6px 20px rgba(2,6,23,0.6);
-        overflow-x: auto;
-        white-space: nowrap;
-        border-left: 6px solid #6d28d9;
-    }
-    .top-nav::-webkit-scrollbar { height: 8px; }
-    .top-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.04); border-radius: 8px; }
-    .top-nav .logo { display:flex; align-items:center; gap:12px; color:#f8fafc; font-weight:800; font-size:18px; }
-    .top-nav .logo img { border-radius:8px; box-shadow: 0 2px 8px rgba(0,0,0,0.5); }
-    .top-nav .nav-link { color:#e6eef8; padding:10px 14px; border-radius:12px; text-decoration:none; display:inline-flex; align-items:center; gap:10px; font-weight:600; font-size:15px; background: rgba(255,255,255,0.01); }
-    .top-nav .nav-link:hover { background: rgba(255,255,255,0.04); color:#fff; transform: translateY(-1px); transition: all 140ms cubic-bezier(.2,.9,.2,1); }
-    .top-nav .nav-link.active { background: linear-gradient(90deg,#1e3a8a,#3b82f6); color:#fff; box-shadow: 0 8px 22px rgba(59,130,246,0.18); border-radius:14px; }
-    .top-nav .nav-link .icon { font-size:18px; opacity:0.98; }
-    .content-offset { padding-top: 18px; }
-    @media (max-width: 900px){
-        .top-nav { padding: 8px 12px; }
-        .top-nav .nav-link { padding:8px 10px; font-size:14px; }
-        .content-offset { padding-top: 10px; }
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# Render top nav using HTML anchors that will be enhanced with streamlit's page links below
-links_html = ['<div class="top-nav">']
 try:
-    # try to show logo image
-    from pathlib import Path
-    if Path('assets/logo.png').exists():
-        links_html.append('<div class="logo"><img src="assets/logo.png" height="36"/></div>')
-    else:
-        links_html.append('<div class="logo">💊 Controle de Enfermagem</div>')
+    _alertas = ordenar_alertas(get_alertas() + get_alertas_materiais())
 except Exception:
-    links_html.append('<div class="logo">💊 Controle de Enfermagem</div>')
+    _alertas = []
+_total_alertas = len(_alertas)
 
-for path, label in nav_items:
-    links_html.append(f'<a class="nav-link" href="?page={path}" data-page="{path}" target="_self">{label}</a>')
+links_html = [
+    '<nav class="top-nav">'
+    f'<a class="logo" href="?page=pages/home.py" target="_self" data-nav="0">{icon("heart-pulse", 24)}'
+    "<span>Controle de Enfermagem</span></a>"
+    '<div class="nav-links">'
+]
+for i, (path, label, nome_icone) in enumerate(nav_items):
+    ativo = " active" if paginas[path].url_path == pg.url_path else ""
+    links_html.append(
+        f'<a class="nav-link{ativo}" href="?page={path}" target="_self" data-nav="{i}">'
+        f"{icon(nome_icone, 15)}<span>{label}</span></a>"
+    )
+links_html.append('</div><div class="nav-actions">')
 
-# Render topbar HTML so CSS `.top-nav` applies to anchors
-links_html.append('</div>')
+badge = f'<span class="nav-badge">{min(_total_alertas, 99)}</span>' if _total_alertas else ""
+links_html.append(
+    f'<label class="nav-bell{" has-alerts" if _total_alertas else ""}" for="nt-toggle" '
+    f'title="{_total_alertas} alerta(s) de validade">{icon("bell", 19)}{badge}</label>'
+)
+if login_ativo():
+    links_html.append(
+        '<div class="nav-user" tabindex="0">'
+        '<span class="nav-avatar">EQ</span>'
+        '<span class="nav-user-text"><b>Equipe</b><small>Enfermagem</small></span>'
+        f'{icon("chevron-down", 15)}'
+        '<div class="nav-menu">'
+        f'<a class="nav-menu-item logout" href="?logout=1" target="_self">{icon("logout", 15)}<span>Sair</span></a>'
+        "</div></div>"
+    )
+links_html.append("</div></nav>")
 st.markdown("".join(links_html), unsafe_allow_html=True)
+st.markdown(notification_drawer(_alertas), unsafe_allow_html=True)
+
+# Os links acima recarregariam o navegador inteiro (nova sessão + switch_page = duas execuções).
+# O script repassa o clique em a[data-nav] para o st.page_link oculto correspondente, que troca
+# de página pela conexão já aberta. Sem o script, ou com Ctrl/clique do meio, vale o href normal.
+with st.container(key="nav-shadow"):
+    for i, (path, label, _) in enumerate(nav_items):
+        with st.container(key=f"nav-shadow-{i}"):
+            st.page_link(paginas[path], label=label)
+
+components.html(
+    """<script>
+(function () {
+  var d = window.parent.document;
+  if (d.getElementById("cm-nav-js")) return;
+  var s = d.createElement("script");
+  s.id = "cm-nav-js";
+  s.textContent = `document.addEventListener("click", function (ev) {
+    if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+    var a = ev.target.closest && ev.target.closest(".top-nav a[data-nav]");
+    if (!a) return;
+    var alvo = document.querySelector(".st-key-nav-shadow-" + a.dataset.nav + " a");
+    if (!alvo) return;
+    ev.preventDefault();
+    document.querySelectorAll(".top-nav .nav-link.active").forEach(function (l) { l.classList.remove("active"); });
+    if (a.classList.contains("nav-link")) a.classList.add("active");
+    alvo.click();
+  }, true);`;
+  d.head.appendChild(s);
+})();
+</script>""",
+    height=0,
+)
 
 st.markdown('<div class="content-offset"></div>', unsafe_allow_html=True)
-
-# Small client-side script to mark the active nav item based on `?page=` query param
-st.markdown(
-    """
-    <script>
-    (function(){
-        try{
-            const params = new URLSearchParams(window.location.search);
-            const p = params.get('page') || localStorage.getItem('cm_active_page') || 'pages/home.py';
-            document.querySelectorAll('.top-nav .nav-link').forEach(a=>{
-                a.classList.toggle('active', a.getAttribute('data-page')===p);
-                a.addEventListener('click', ()=>{ try{ localStorage.setItem('cm_active_page', a.getAttribute('data-page')); }catch(e){} });
-            });
-        }catch(e){console.error(e)}
-    })();
-    </script>
-    """,
-    unsafe_allow_html=True,
-)
 
 # Route to the page requested via ?page= query param
 _qp_page = st.query_params.get('page', '')
 if _qp_page and _qp_page.endswith('.py'):
     try:
-        st.switch_page(_qp_page)
+        # Repassa os demais parâmetros (ex.: ?busca=) para a página de destino
+        st.switch_page(_qp_page, query_params={k: v for k, v in st.query_params.items() if k != "page"})
     except Exception:
         pass
 

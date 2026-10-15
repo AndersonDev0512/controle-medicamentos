@@ -81,6 +81,12 @@ def calcular_status(dias: Optional[int]) -> str:
     return STATUS_OK
 
 
+def carrinho_sn(value: object) -> str:
+    """Normaliza a coluna Carrinho de Parada para "S" ou "N" (vazio, "Não", "N" -> "N")."""
+    texto = normalizar_texto(value)
+    return "S" if texto in {"s", "sim", "x", "true", "1", "yes", "y"} else "N"
+
+
 def formatar_data_hora() -> str:
     tz = ZoneInfo("America/Cuiaba")
     return datetime.now(tz).strftime("%d/%m/%Y %H:%M:%S")
@@ -108,10 +114,81 @@ def normalizar_texto(value: object) -> str:
 
 def load_css() -> None:
     try:
+        from utils.ui import icon_css
         with open("assets/style.css", encoding="utf-8") as f:
-            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+            st.markdown(f"<style>{f.read()}\n{icon_css()}</style>", unsafe_allow_html=True)
     except FileNotFoundError:
         pass
+
+
+_COLUNAS_NUMERICAS = {"quantidade", "quantidade fechada", "saldo aberto", "volume por unidade"}
+
+
+def _classe_coluna(header: object) -> str:
+    nome = normalizar_texto(header)
+    if nome in _COLUNAS_NUMERICAS:
+        return "col-num"
+    if nome in {"status", "carrinho de parada", "dias para vencer"}:
+        return "col-tag"
+    return ""
+
+
+def _vazio(value: object) -> bool:
+    try:
+        if pd.isna(value):
+            return True
+    except (TypeError, ValueError):
+        pass
+    return str(value).strip() in {"", "nan", "None", "NaT", "<NA>"}
+
+
+def _status_canonico(value: object) -> str | None:
+    """Status canônico só se o valor for um status de validade (cru ou já com status_label)."""
+    if _vazio(value):
+        return None
+    texto = str(value).strip()
+    for status in (STATUS_VENCIDO, STATUS_CRITICO, STATUS_ATENCAO, STATUS_PROXIMO, STATUS_OK):
+        if texto.casefold() in {status.casefold(), status_label(status).casefold()}:
+            return status
+    return None
+
+
+def _formatar_celula(header: object, value: object, sev) -> str:
+    """HTML de uma célula da tabela; colunas conhecidas ganham badge/chip, as demais só texto."""
+    if _vazio(value):
+        return '<span class="rt-empty">—</span>'
+    nome = normalizar_texto(header)
+    texto = html.escape(str(value)).replace("\n", "<br>")
+
+    if nome == "status":
+        status = _status_canonico(value)
+        if status:
+            s = sev(status)
+            return (
+                f'<span class="rt-status" style="--c:{s["cor"]}" title="{html.escape(s["faixa"])}">'
+                f'<i></i>{html.escape(s["rotulo"])}</span><small class="rt-sub">{html.escape(s["faixa"])}</small>'
+            )
+    elif nome == "dias para vencer":
+        dias = pd.to_numeric(value, errors="coerce")
+        if not pd.isna(dias):
+            dias = int(dias)
+            s = sev(calcular_status(dias))
+            preenchido = max(0, min(dias, 180)) / 180 * 100
+            rotulo = f"{dias} dia(s)" if dias >= 0 else f"há {abs(dias)} dia(s)"
+            return (
+                f'<span class="rt-dias" style="--c:{s["cor"]}"><b>{rotulo}</b>'
+                f'<span class="rt-meter"><span style="width:{preenchido:.0f}%"></span></span></span>'
+            )
+    elif nome == "carrinho de parada":
+        if carrinho_sn(value) == "S":
+            return '<span class="rt-cart">Sim</span>'
+        return '<span class="rt-empty">Não</span>'
+    elif nome == "lote":
+        return f'<code class="rt-lote">{texto}</code>'
+    elif nome in _COLUNAS_NUMERICAS:
+        zero = ' rt-zero' if pd.to_numeric(str(value).replace(",", "."), errors="coerce") == 0 else ""
+        return f'<span class="rt-num{zero}">{texto}</span>'
+    return texto
 
 
 def render_responsive_table(dataframe: pd.DataFrame) -> None:
@@ -120,19 +197,23 @@ def render_responsive_table(dataframe: pd.DataFrame) -> None:
         st.info("Nenhum registro encontrado.")
         return
 
+    from utils.components import sev  # import tardio: components importa este módulo
+
     headers = list(dataframe.columns)
     header_html = "".join(
-        f"<th>{html.escape(str(header))}</th>" for header in headers
+        f'<th class="{_classe_coluna(header)}">{html.escape(str(header))}</th>' for header in headers
     )
     rows_html = []
     for _, row in dataframe.iterrows():
         cells = []
+        status_linha = _status_canonico(row.get("Status")) if "Status" in headers else None
         for header in headers:
-            value = html.escape(str(row.get(header, ""))).replace("\n", "<br>")
             cells.append(
-                f'<td data-label="{html.escape(str(header))}">{value}</td>'
+                f'<td class="{_classe_coluna(header)}" data-label="{html.escape(str(header))}">'
+                f"{_formatar_celula(header, row.get(header, ''), sev)}</td>"
             )
-        rows_html.append(f"<tr>{''.join(cells)}</tr>")
+        cor = f' style="--row-c:{sev(status_linha)["cor"]}"' if status_linha else ""
+        rows_html.append(f"<tr{cor}>{''.join(cells)}</tr>")
 
     st.markdown(
         '<div class="responsive-table-wrapper">'

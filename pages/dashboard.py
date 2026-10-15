@@ -35,7 +35,7 @@ except ImportError:
 
 BG = "#0A0F1C"
 PANEL = "#111827"
-GRID = "#263247"
+GRID = "rgba(148, 163, 184, 0.14)"
 TEXT = "#E5F2FF"
 MUTED = "#8EA4BE"
 CYAN = "#00CFFF"
@@ -157,7 +157,7 @@ def _chart(title: str, option: dict, height: int = 320) -> None:
         figure.add_trace(go.Indicator(mode="gauge+number", value=value, gauge={"axis": {"range": [0, series.get("max", 1)]}, "bar": {"color": "#EF4444"}}))
     else:
         figure.add_trace(go.Scatter(x=option.get("xAxis", {}).get("data", []), y=series.get("data", []), mode="lines+markers", line=dict(color=CYAN, width=3)))
-    figure.update_layout(height=height, margin=dict(l=8, r=8, t=8, b=8), paper_bgcolor=PANEL, plot_bgcolor=PANEL, font_color=TEXT, showlegend=False, xaxis=dict(gridcolor=GRID), yaxis=dict(gridcolor=GRID))
+    figure.update_layout(height=height, margin=dict(l=8, r=8, t=8, b=8), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color=TEXT, showlegend=False, xaxis=dict(gridcolor=GRID), yaxis=dict(gridcolor=GRID))
     st.plotly_chart(figure, use_container_width=True, config={"displayModeBar": False})
 
 

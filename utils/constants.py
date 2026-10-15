@@ -18,6 +18,7 @@ COLUNAS_ESTOQUE: Final = [
     "Dias para Vencer",
     "Status",
     "Observações",
+    "Carrinho de Parada",
 ]
 
 COLUNAS_MATERIAIS: Final = [
@@ -32,6 +33,7 @@ COLUNAS_MATERIAIS: Final = [
     "Observação",
     "Usuário que Registrou",
     "Data de Inserção",
+    "Carrinho de Parada",
 ]
 
 COLUNAS_REGISTRO: Final = [
@@ -99,6 +101,11 @@ OPCOES_UNIDADE_FRACIONADA: Final = [
     "Não",
     "Sim",
 ]
+
+# Coluna "Carrinho de Parada" (estoque de medicamentos e de materiais): grava "S" ou "N".
+# Células vazias (lotes antigos) contam como "N".
+CARRINHO_SIM: Final = "S"
+CARRINHO_NAO: Final = "N"
 
 TIPOS_MOVIMENTACAO: Final = [
     "Entrada",

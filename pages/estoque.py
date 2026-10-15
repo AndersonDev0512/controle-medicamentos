@@ -9,7 +9,8 @@ from services.estoque_service import get_materiais
 from utils.config import get_config
 from utils.constants import STATUS_VENCIDO, STATUS_CRITICO, STATUS_ATENCAO, STATUS_PROXIMO, STATUS_OK
 from utils.helpers import normalizar_texto, render_responsive_table, status_label
-import plotly.express as px
+from utils.constants import CARRINHO_SIM
+from utils.components import stock_summary
 
 
 HAS_REPORTLAB = True
@@ -166,6 +167,16 @@ with tab_estoque_medicamentos:
 
     col1, col2, col3 = st.columns([3, 2, 1])
 
+    # ?carrinho=1 (KPI da Página Inicial) liga o filtro do Carrinho de Parada uma vez
+    if st.query_params.get("carrinho"):
+        st.session_state["apenas_carrinho_medicamento"] = True
+        del st.query_params["carrinho"]
+
+    # ?busca=<lote> (vindo da Central de alertas) preenche a pesquisa uma vez
+    if st.query_params.get("busca"):
+        st.session_state["pesquisa_medicamento"] = st.query_params["busca"]
+        del st.query_params["busca"]
+
     with col1:
         pesquisa = st.text_input(
             "🔍 Pesquisar por medicamento ou lote",
@@ -200,7 +211,7 @@ with tab_estoque_medicamentos:
             key="ordenar_medicamento",
         )
 
-    col4, col5, col6 = st.columns(3)
+    col4, col5, col6, col7 = st.columns(4)
 
     with col4:
         quantidade_minima = st.number_input(
@@ -225,6 +236,12 @@ with tab_estoque_medicamentos:
         apenas_vencendo = st.checkbox(
             "Vencimento nos próximos 120 dias",
             key="apenas_vencendo_medicamento",
+        )
+
+    with col7:
+        apenas_carrinho = st.checkbox(
+            "Somente Carrinho de Parada",
+            key="apenas_carrinho_medicamento",
         )
 
     df_filt = df.copy()
@@ -280,6 +297,9 @@ with tab_estoque_medicamentos:
             dias.between(0, 120)
         ]
 
+    if apenas_carrinho:
+        df_filt = df_filt[df_filt["Carrinho de Parada"] == CARRINHO_SIM]
+
     ascending = ordenar not in {
         "Dias para Vencer",
         "Quantidade",
@@ -296,6 +316,7 @@ with tab_estoque_medicamentos:
     display_df["Status"] = display_df["Status"].map(
         lambda status: status_label(str(status))
     )
+    display_df["Carrinho de Parada"] = display_df["Carrinho de Parada"].map({"S": "Sim", "N": "Não"})
 
     st.caption(
         f"Exibindo {len(df_filt)} de {len(df)} registro(s)"
@@ -313,6 +334,7 @@ with tab_estoque_medicamentos:
         "Data de Vencimento",
         "Dias para Vencer",
         "Status",
+        "Carrinho de Parada",
     ]
 
     colunas_existentes = [
@@ -323,109 +345,11 @@ with tab_estoque_medicamentos:
 
     render_responsive_table(display_df[colunas_existentes])
 
-    grafico_coluna, resumo_coluna = st.columns([2, 1])
-
-    with grafico_coluna:
-        if not df_filt.empty:
-            contagem_status = (
-                df_filt.groupby("Status")
-                .size()
-                .reset_index(name="Registros")
-            )
-
-            ordem_status = [
-                STATUS_VENCIDO,
-                STATUS_CRITICO,
-                STATUS_ATENCAO,
-                STATUS_PROXIMO,
-                STATUS_OK,
-            ]
-
-            contagem_status["Status"] = pd.Categorical(
-                contagem_status["Status"],
-                categories=ordem_status,
-                ordered=True,
-            )
-
-            figura = px.bar(
-                contagem_status.sort_values("Status"),
-                x="Status",
-                y="Registros",
-                text="Registros",
-                color="Status",
-                color_discrete_map={
-                    STATUS_VENCIDO: "#525252",
-                    STATUS_CRITICO: "#a3a3a3",
-                    STATUS_ATENCAO: "#d4d4d4",
-                    STATUS_PROXIMO: "#737373",
-                    STATUS_OK: "#171717",
-                },
-                title="Distribuição do estoque por status",
-            )
-
-            figura.update_layout(
-                showlegend=False,
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                margin=dict(
-                    l=10,
-                    r=10,
-                    t=45,
-                    b=10,
-                ),
-            )
-
-            figura.update_xaxes(
-                title=None,
-                showgrid=False,
-            )
-
-            figura.update_yaxes(
-                title=None,
-                showgrid=True,
-                gridcolor="rgba(148,163,184,0.20)",
-            )
-
-            st.plotly_chart(
-                figura,
-                width="stretch",
-            )
-
-    with resumo_coluna:
-        st.markdown(
-            '<div class="section-header">Resumo</div>',
-            unsafe_allow_html=True,
-        )
-
-        st.metric(
-            "Itens filtrados",
-            len(df_filt),
-        )
-
-        total_estoque = pd.to_numeric(
-            df_filt["Quantidade"],
-            errors="coerce",
-        ).fillna(0).sum()
-
-        st.metric(
-            "Unidades fechadas",
-            int(total_estoque),
-        )
-
-        if "Saldo Aberto" in df_filt.columns:
-            total_aberto = pd.to_numeric(
-                df_filt["Saldo Aberto"],
-                errors="coerce",
-            ).fillna(0).sum()
-
-            st.metric(
-                "Saldo aberto",
-                round(total_aberto, 2),
-            )
+    st.html(stock_summary(df_filt, len(df), "medicamentos"))
 
     st.markdown(
         '<div class="section-header">'
-        "Exportar resultado filtrado"
+        "Exportar resultado"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -446,7 +370,8 @@ with tab_estoque_medicamentos:
         ).encode("utf-8-sig")
 
         st.download_button(
-            "📄 CSV",
+            "CSV",
+            icon=":material/description:",
             data=csv,
             file_name="estoque_medicamentos.csv",
             mime="text/csv",
@@ -467,7 +392,8 @@ with tab_estoque_medicamentos:
             )
 
         st.download_button(
-            "📊 Excel",
+            "Excel",
+            icon=":material/table_view:",
             data=excel.getvalue(),
             file_name="estoque_medicamentos.xlsx",
             mime=(
@@ -485,7 +411,8 @@ with tab_estoque_medicamentos:
             )
 
             st.download_button(
-                "📑 PDF",
+                "PDF",
+                icon=":material/picture_as_pdf:",
                 data=pdf,
                 file_name="estoque_medicamentos.pdf",
                 mime="application/pdf",
@@ -514,13 +441,15 @@ with tab_estoque_materiais:
     with c3:
         ordenar = st.selectbox("Ordenar por", ["Material", "Dias para Vencer", "Quantidade", "Data de Vencimento", "Status"], key="ordenar_material")
 
-    c4, c5, c6 = st.columns(3)
+    c4, c5, c6, c7 = st.columns(4)
     with c4:
         quantidade_minima = st.number_input("Quantidade mínima", min_value=0, value=0, step=1, key="quantidade_minima_material")
     with c5:
         quantidade_maxima = st.number_input("Quantidade máxima", min_value=0, value=0, step=1, help="Use 0 para não limitar.", key="quantidade_maxima_material")
     with c6:
         apenas_vencendo = st.checkbox("Vencimento nos próximos 120 dias", key="apenas_vencendo_material")
+    with c7:
+        apenas_carrinho = st.checkbox("Somente Carrinho de Parada", key="apenas_carrinho_material")
 
     df_filt = df.copy()
     if pesquisa:
@@ -538,56 +467,34 @@ with tab_estoque_materiais:
     if apenas_vencendo:
         dias = pd.to_numeric(df_filt["Dias para Vencer"], errors="coerce")
         df_filt = df_filt[dias.between(0, 120)]
+    if apenas_carrinho:
+        df_filt = df_filt[df_filt["Carrinho de Parada"] == CARRINHO_SIM]
 
     ascending = ordenar not in {"Dias para Vencer", "Quantidade"}
     df_filt = df_filt.sort_values(ordenar, ascending=ascending, na_position="last")
     display_df = df_filt.copy()
     display_df["Status"] = display_df["Status"].map(lambda status: status_label(str(status)))
+    display_df["Carrinho de Parada"] = display_df["Carrinho de Parada"].map({"S": "Sim", "N": "Não"})
 
     st.caption(f"Exibindo {len(df_filt)} de {len(df)} registro(s)")
-    colunas = ["Material", "Quantidade", "Unidade de Medida", "Lote", "Data de Vencimento", "Dias para Vencer", "Status"]
+    colunas = ["Material", "Quantidade", "Unidade de Medida", "Lote", "Data de Vencimento", "Dias para Vencer", "Status", "Carrinho de Parada"]
     render_responsive_table(display_df[colunas])
 
-    grafico_coluna, resumo_coluna = st.columns([2, 1])
-    with grafico_coluna:
-        if not df_filt.empty:
-            contagem_status = df_filt.groupby("Status").size().reset_index(name="Registros")
-            ordem_status = [STATUS_VENCIDO, STATUS_CRITICO, STATUS_ATENCAO, STATUS_PROXIMO, STATUS_OK]
-            contagem_status["Status"] = pd.Categorical(contagem_status["Status"], categories=ordem_status, ordered=True)
-            figura = px.bar(
-                contagem_status.sort_values("Status"),
-                x="Status",
-                y="Registros",
-                text="Registros",
-                color="Status",
-                color_discrete_map={
-                    STATUS_VENCIDO: "#525252", STATUS_CRITICO: "#a3a3a3", STATUS_ATENCAO: "#d4d4d4",
-                    STATUS_PROXIMO: "#737373", STATUS_OK: "#171717",
-                },
-                title="Distribuição do estoque por status",
-            )
-            figura.update_layout(showlegend=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=10, t=45, b=10))
-            figura.update_xaxes(title=None, showgrid=False)
-            figura.update_yaxes(title=None, showgrid=True, gridcolor="rgba(148,163,184,0.20)")
-            st.plotly_chart(figura, use_container_width=True)
-    with resumo_coluna:
-        st.markdown('<div class="section-header">Resumo</div>', unsafe_allow_html=True)
-        st.metric("Itens filtrados", len(df_filt))
-        st.metric("Unidades em estoque", int(pd.to_numeric(df_filt["Quantidade"], errors="coerce").fillna(0).sum()))
+    st.html(stock_summary(df_filt, len(df), "materiais"))
 
-    st.markdown('<div class="section-header">Exportar resultado filtrado</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">Exportar resultado</div>', unsafe_allow_html=True)
     col_e1, col_e2, col_e3, _ = st.columns([1, 1, 1, 3])
     with col_e1:
         csv = df_filt.drop(columns=["_sheet_row"], errors="ignore").to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-        st.download_button("📄 CSV", data=csv, file_name="estoque_materiais.csv", mime="text/csv", width="stretch")
+        st.download_button("CSV", icon=":material/description:", data=csv, file_name="estoque_materiais.csv", mime="text/csv", width="stretch")
     with col_e2:
         excel = BytesIO()
         with pd.ExcelWriter(excel, engine="openpyxl") as writer:
             df_filt.drop(columns=["_sheet_row"], errors="ignore").to_excel(writer, index=False, sheet_name="Materiais")
-        st.download_button("📊 Excel", data=excel.getvalue(), file_name="estoque_materiais.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", width="stretch")
+        st.download_button("Excel", icon=":material/table_view:", data=excel.getvalue(), file_name="estoque_materiais.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", width="stretch")
     with col_e3:
         if HAS_REPORTLAB:
             pdf = gerar_pdf_materiais(display_df)
-            st.download_button("📑 PDF", data=pdf, file_name="estoque_materiais.pdf", mime="application/pdf", width="stretch")
+            st.download_button("PDF", icon=":material/picture_as_pdf:", data=pdf, file_name="estoque_materiais.pdf", mime="application/pdf", width="stretch")
         else:
             st.info("PDF indisponível: reportlab não está instalado neste ambiente.")

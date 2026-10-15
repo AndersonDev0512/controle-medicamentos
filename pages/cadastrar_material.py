@@ -8,7 +8,8 @@ from services.estoque_service import (
     get_unidades_materiais_from_sheet,
 )
 from services.sheets_service import adicionar_material, atualizar_material, auditar_alteracao, excluir_material
-from utils.helpers import formatar_data_hora, normalizar_texto
+from utils.helpers import carrinho_sn, formatar_data_hora, normalizar_texto
+from utils.constants import CARRINHO_NAO, CARRINHO_SIM
 
 
 def mostrar_toast_pendente():
@@ -62,6 +63,8 @@ with tab_cad:
             with c2:
                 st.text_input("Lote *", key=f"mat_lote_{row_id}")
                 st.date_input("Data de Vencimento *", value=date.today(), format="DD/MM/YYYY", key=f"mat_val_{row_id}")
+                st.segmented_control("Carrinho de Parada? *", options=["Não", "Sim"], default="Não", required=True,
+                                     key=f"mat_carrinho_{row_id}", help="Marque Sim se este lote fica no carrinho de parada (emergência).")
                 st.text_area("Observação", height=68, key=f"mat_obs_{row_id}")
             if len(st.session_state.mat_ids) > 1:
                 if st.button("🗑️ Remover", key=f"mat_rem_{row_id}"):
@@ -87,6 +90,7 @@ with tab_cad:
             lote = st.session_state.get(f"mat_lote_{row_id}", "").strip()
             validade = st.session_state.get(f"mat_val_{row_id}", date.today())
             obs = st.session_state.get(f"mat_obs_{row_id}", "").strip()
+            carrinho = CARRINHO_SIM if st.session_state.get(f"mat_carrinho_{row_id}", "Não") == "Sim" else CARRINHO_NAO
 
             if not nome:
                 erros.append(f"Material {i+1}: Nome é obrigatório.")
@@ -103,6 +107,7 @@ with tab_cad:
                     "Data de Inserção": formatar_data_hora(),
                     "Data de Vencimento": validade.strftime("%d/%m/%Y") if isinstance(validade, date) else str(validade),
                     "Observação": obs,
+                    "Carrinho de Parada": carrinho,
                 })
 
         if erros:
@@ -166,6 +171,14 @@ with tab_edit:
             with c2:
                 e_lote = st.text_input("Lote", value=str(row["Lote"]))
                 e_val = st.date_input("Vencimento", value=val_atual, format="DD/MM/YYYY")
+                e_carrinho = st.segmented_control(
+                    "Carrinho de Parada?",
+                    options=["Não", "Sim"],
+                    default="Sim" if carrinho_sn(row.get("Carrinho de Parada")) == CARRINHO_SIM else "Não",
+                    required=True,
+                    key=f"e_mat_carrinho_{sheet_row}",
+                    help="Marque Sim se este lote fica no carrinho de parada (emergência).",
+                )
                 e_obs = st.text_area("Observação", value=str(row.get("Observação", "")), height=100)
                 e_user = st.text_input("Usuário que Registrou", value=str(row.get("Usuário que Registrou", "")))
             usuario_auditoria = st.text_input("Usuário responsável pela alteração *")
@@ -184,6 +197,7 @@ with tab_edit:
                     "Lote": e_lote.strip(),
                     "Data de Vencimento": e_val.strftime("%d/%m/%Y"),
                     "Observação": e_obs.strip(),
+                    "Carrinho de Parada": CARRINHO_SIM if e_carrinho == "Sim" else CARRINHO_NAO,
                     "Usuário que Registrou": e_user.strip(),
                     "Data de Inserção": str(row.get("Data de Inserção", "")),
                 }
@@ -354,6 +368,8 @@ with tab_cons:
     else:
         pesq = st.text_input("🔍 Pesquisar", placeholder="Material, lote...", key="pesq_cons_mat")
         df_cons = df3.drop(columns=['_sheet_row'], errors='ignore').copy()
+        if st.checkbox("Somente itens do Carrinho de Parada", key="cons_mat_carrinho"):
+            df_cons = df_cons[df_cons["Carrinho de Parada"] == CARRINHO_SIM]
         if pesq.strip():
             termo = normalizar_texto(pesq)
             mask = df_cons["Material"].map(normalizar_texto).str.contains(

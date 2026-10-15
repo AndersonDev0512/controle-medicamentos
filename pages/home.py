@@ -1,140 +1,258 @@
+from __future__ import annotations
+
+import html
+from datetime import date, timedelta
+
+import pandas as pd
 import streamlit as st
-import plotly.graph_objects as go
+
+from services.alerta_service import get_alertas, get_alertas_materiais, ordenar_alertas
+from services.dashboard_service import get_chart_aplicacoes_diarias, get_kpis, get_kpis_materiais
 from services.estoque_service import get_estoque
-from services.dashboard_service import get_kpis, get_kpis_materiais
-from services.alerta_service import get_alertas
-from utils.helpers import metric_card, status_label, normalize_status
-
-st.markdown(
-    '<h2 style="margin:0 0 12px 0;color:#f1f5f9;font-size:1.4rem;font-weight:700;">🏠 Página Inicial</h2>',
-    unsafe_allow_html=True,
+from services.estoque_service import get_materiais
+from services.sheets_service import ler_materiais
+from utils.assets import static_url
+from utils.components import (
+    ORDEM_ALERTA,
+    alerts_table,
+    empty_state,
+    kpi_card,
+    page_link,
+    prazo_texto,
+    quick_action,
+    recent_alert,
+    section_header,
+    sev,
+    sparkbars,
+    status_badge,
+    validity_panel,
 )
+from utils.config import get_config
+from utils.constants import CARRINHO_SIM, STATUS_VENCIDO, STATUS_CRITICO, STATUS_ATENCAO, STATUS_PROXIMO, STATUS_OK
+from utils.helpers import formatar_data_hora, normalize_status, safe_int
+from utils.ui import icon
 
-kpis   = get_kpis()
-kpis_m = get_kpis_materiais()
-alertas = get_alertas()
+e = html.escape
 
-st.markdown('<div class="section-header">⚠️ Alertas de validade</div>', unsafe_allow_html=True)
-if alertas:
-    for alerta in alertas[:8]:
-        dias = alerta.dias_para_vencer
-        prazo = (
-            f"vencido há {abs(dias)} dia(s)"
-            if dias is not None and dias < 0
-            else f"{dias} dia(s) restantes"
+_ALERTAS_RECENTES = 5
+_DIAS_SPARK = 14
+
+
+def contagens_validade(k: dict) -> dict[str, int]:
+    return {
+        STATUS_VENCIDO: k.get("vencidos", 0),
+        STATUS_CRITICO: k.get("critico", 0),
+        STATUS_ATENCAO: k.get("atencao", 0),
+        STATUS_PROXIMO: k.get("proximos", 0),
+        STATUS_OK: k.get("ok", 0),
+    }
+
+
+def serie_aplicacoes(dias: int) -> tuple[list[int], list[str]]:
+    """Aplicações por dia nos últimos ``dias`` dias (zeros onde não houve registro)."""
+    df = get_chart_aplicacoes_diarias()
+    por_dia = {}
+    if not df.empty:
+        datas = pd.to_datetime(df["Data"], format="%d/%m/%Y", errors="coerce")
+        por_dia = {d.date(): int(q) for d, q in zip(datas, df["Aplicações"]) if pd.notna(d)}
+    hoje = date.today()
+    janela = [hoje - timedelta(days=i) for i in range(dias - 1, -1, -1)]
+    return [por_dia.get(d, 0) for d in janela], [d.strftime("%d/%m") for d in janela]
+
+
+def tabela_ultimos(df: pd.DataFrame) -> str:
+    linhas = []
+    for _, row in df.iterrows():
+        status = normalize_status(row.get("Status"))
+        s = sev(status)
+        dias = row.get("Dias para Vencer")
+        dias = None if dias is None or pd.isna(dias) else int(dias)
+        unidade = e(str(row.get("Unidade de Medida", "") or ""))
+        linhas.append(
+            "<tr>"
+            f'<td data-label="Medicamento"><div class="hm-cell-med"><span class="hm-cell-dot" style="--c:{s["cor"]}">{icon("pill", 15)}</span>'
+            f'<b>{e(str(row.get("Medicamento", "")))}</b></div></td>'
+            f'<td data-label="Quantidade" class="hm-num"><b>{safe_int(row.get("Quantidade", 0))}</b> <small>{unidade}</small></td>'
+            f'<td data-label="Lote"><code class="hm-lote">{e(str(row.get("Lote", "") or "—"))}</code></td>'
+            f'<td data-label="Vencimento">{e(str(row.get("Data de Vencimento", "") or "—"))}</td>'
+            f'<td data-label="Prazo" class="hm-prazo-cell" style="--c:{s["cor"]}">{prazo_texto(dias)}</td>'
+            f'<td data-label="Status">{status_badge(status)}</td>'
+            "</tr>"
         )
-        st.warning(f"{alerta.medicamento} | Lote {alerta.lote} | {prazo} | {alerta.status}")
-else:
-    st.success("Nenhum alerta de validade no momento.")
-
-# ── KPI Block: Medicamentos ────────────────────────────────────────────────────
-st.markdown(
-    '<div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;'
-    'color:#64748b;margin-bottom:6px;">Estoque de Medicamentos</div>',
-    unsafe_allow_html=True,
-)
-med_total_col, med_total_value = st.columns([1.2, 2.8])
-with med_total_col:
-    st.markdown(metric_card("TOTAL", kpis.get("total_medicamentos", 0), "📦", "#6366f1"), unsafe_allow_html=True)
-with med_total_value:
-    mc1, mc2, mc3, mc4, mc5 = st.columns(5)
-    mc1.markdown(metric_card("⚫ VENCIDO",                kpis.get("vencidos", 0), "⚫", "#475569"), unsafe_allow_html=True)
-    mc2.markdown(metric_card("🔴 CRÍTICO (até 15 dias)",  kpis.get("critico",  0), "🔴", "#ef4444"), unsafe_allow_html=True)
-    mc3.markdown(metric_card("🟠 ATENÇÃO (16 a 89 dias)", kpis.get("atencao",  0), "🟠", "#f97316"), unsafe_allow_html=True)
-    mc4.markdown(metric_card("🟡 PRÓXIMO (90 a 120 dias)",kpis.get("proximos", 0), "🟡", "#f59e0b"), unsafe_allow_html=True)
-    mc5.markdown(metric_card("🟢 OK (+120 dias)",         kpis.get("ok",       0), "🟢", "#22c55e"), unsafe_allow_html=True)
-
-st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
-
-# ── KPI Block: Materiais ───────────────────────────────────────────────────────
-st.markdown(
-    '<div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;'
-    'color:#64748b;margin-bottom:6px;">Estoque de Materiais</div>',
-    unsafe_allow_html=True,
-)
-mat_total_col, mat_total_value = st.columns([1.2, 2.8])
-with mat_total_col:
-    st.markdown(metric_card("TOTAL", kpis_m.get("total", 0), "📦", "#10b981"), unsafe_allow_html=True)
-with mat_total_value:
-    mm1, mm2, mm3, mm4, mm5 = st.columns(5)
-    mm1.markdown(metric_card("⚫ VENCIDO",                kpis_m.get("vencidos", 0), "⚫", "#475569"), unsafe_allow_html=True)
-    mm2.markdown(metric_card("🔴 CRÍTICO (até 15 dias)",  kpis_m.get("critico",  0), "🔴", "#ef4444"), unsafe_allow_html=True)
-    mm3.markdown(metric_card("🟠 ATENÇÃO (16 a 89 dias)", kpis_m.get("atencao",  0), "🟠", "#f97316"), unsafe_allow_html=True)
-    mm4.markdown(metric_card("🟡 PRÓXIMO (90 a 120 dias)",kpis_m.get("proximos", 0), "🟡", "#f59e0b"), unsafe_allow_html=True)
-    mm5.markdown(metric_card("🟢 OK (+120 dias)",         kpis_m.get("ok",       0), "🟢", "#22c55e"), unsafe_allow_html=True)
-
-st.markdown("<hr style='border-color:#1e293b;margin:16px 0'/>", unsafe_allow_html=True)
-
-# ── Plotly dark table: últimos medicamentos ────────────────────────────────────
-st.markdown(
-    '<div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;'
-    'color:#64748b;margin-bottom:8px;">Últimos Medicamentos Cadastrados</div>',
-    unsafe_allow_html=True,
-)
-
-df = get_estoque()
-
-_STATUS_COLOR = {
-    "Vencido": "#475569",
-    "Crítico": "#ef4444",
-    "Atenção":  "#f97316",
-    "Próximo":  "#f59e0b",
-    "OK":       "#22c55e",
-}
-_BG   = "#0f172a"
-_HEAD = "#1e293b"
-_FONT = "#e2e8f0"
-_GRID = "#1e293b"
-
-if df.empty:
-    st.info("Nenhum medicamento cadastrado ainda.")
-else:
-    cols_show = ["Medicamento", "Quantidade", "Unidade de Medida", "Lote", "Data de Vencimento", "Status"]
-    dft = df[cols_show].tail(15).iloc[::-1].reset_index(drop=True)
-    dft["Status"] = dft["Status"].map(lambda s: status_label(str(s)))
-    status_colors = [_STATUS_COLOR.get(normalize_status(s), "#334155") for s in dft["Status"]]
-
-    fig = go.Figure(go.Table(
-        columnwidth=[240, 80, 140, 120, 150, 100],
-        header=dict(
-            values=[f"<b>{c}</b>" for c in cols_show],
-            fill_color=_HEAD,
-            font=dict(color="#64748b", size=12, family="monospace"),
-            align="left",
-            height=36,
-            line=dict(color="#0f172a", width=1),
-        ),
-        cells=dict(
-            values=[dft[c].tolist() for c in cols_show],
-            fill_color=[
-                [_BG] * len(dft),
-                [_BG] * len(dft),
-                [_BG] * len(dft),
-                [_BG] * len(dft),
-                [_BG] * len(dft),
-                status_colors,
-            ],
-            font=dict(
-                color=[
-                    [_FONT] * len(dft),
-                    [_FONT] * len(dft),
-                    [_FONT] * len(dft),
-                    [_FONT] * len(dft),
-                    [_FONT] * len(dft),
-                    ["#fff"] * len(dft),
-                ],
-                size=13,
-            ),
-            align="left",
-            height=34,
-            line=dict(color="#0f172a", width=1),
-        ),
-    ))
-    fig.update_layout(
-        margin=dict(l=0, r=0, t=0, b=0),
-        paper_bgcolor=_BG,
-        plot_bgcolor=_BG,
-        height=min(34 * len(dft) + 60, 600),
+    return (
+        '<div class="hm-table-wrap"><table class="hm-table"><thead><tr>'
+        "<th>Medicamento</th><th>Quantidade</th><th>Lote</th><th>Vencimento</th><th>Prazo</th><th>Status</th>"
+        f'</tr></thead><tbody>{"".join(linhas)}</tbody></table></div>'
     )
-    st.plotly_chart(fig, use_container_width=True)
 
+
+# ── Dados ─────────────────────────────────────────────────────────────────────
+kpis = get_kpis()
+kpis_m = get_kpis_materiais()
+alertas = ordenar_alertas(get_alertas() + get_alertas_materiais())
+df = get_estoque()
+config = get_config()
+agora = formatar_data_hora()  # America/Cuiaba (utils/helpers.py)
+data_hoje, hora_agora = agora.split(" ")
+
+total_med = kpis.get("total_medicamentos", 0)
+total_mat = kpis_m.get("total", 0)
+por_status = {s: sum(1 for a in alertas if a.status == s) for s in ORDEM_ALERTA}
+
+# Situação operacional e estado da leitura da planilha
+if por_status[STATUS_VENCIDO] or por_status[STATUS_CRITICO]:
+    situacao = ("#EF4444", "Requer ação imediata")
+elif alertas:
+    situacao = ("#F59E0B", "Itens em observação")
+else:
+    situacao = ("#22C55E", "Estoque em conformidade")
+
+try:
+    tem_dados = not df.empty or not ler_materiais().empty
+    sync = ("#22C55E", "Google Sheets conectado") if tem_dados else ("#F59E0B", "Planilha sem registros")
+except Exception:
+    sync = ("#94A3B8", "Status da planilha desconhecido")
+
+# ── Hero ──────────────────────────────────────────────────────────────────────
+hero_img = static_url("clinical-hero.webp")
+hero_style = f' style="--hero-img:url(\'{hero_img}\')"' if hero_img else ""
+pilares = "".join(
+    f'<span class="hm-pilar">{icon(i, 20)}<small>{t}</small></span>'
+    for i, t in (
+        ("shield-check", "Segurança<br>no cuidado"),
+        ("package", "Controle<br>de estoque"),
+        ("heart-pulse", "Qualidade<br>na assistência"),
+    )
+)
+st.html(
+    f'<section class="hm-hero"{hero_style}>'
+    '<div class="hm-hero-brand">'
+    f'<div class="hm-hero-logo">{icon("pill", 34)}</div>'
+    f'<div class="hm-hero-text"><span class="hm-eyebrow">{e(config.clinic_name)}</span>'
+    "<h1>Controle de Enfermagem</h1>"
+    "<p>Medicamentos, materiais e aplicações monitorados em um só lugar.</p>"
+    f'<div class="hm-pilares">{pilares}</div></div></div>'
+    '<blockquote class="hm-quote">“Cuidar é administrar com responsabilidade.”'
+    "<small>Enfermagem · base para um futuro mais seguro</small></blockquote>"
+    '<div class="hm-status">'
+    f'<div class="hm-status-head">{icon("calendar-clock", 20)}<div><span>Cuiabá · {e(data_hoje)}</span><b>{e(hora_agora)}</b></div></div>'
+    f'<div class="hm-status-row" style="--c:{sync[0]}"><i></i>{e(sync[1])}</div>'
+    f'<div class="hm-status-row" style="--c:{situacao[0]}"><i></i>{e(situacao[1])}</div>'
+    "</div></section>"
+)
+
+# ── KPIs ──────────────────────────────────────────────────────────────────────
+serie, rotulos = serie_aplicacoes(_DIAS_SPARK)
+
+# Carrinho de Parada: lotes marcados "S" em medicamentos e materiais
+df_mat = get_materiais()
+car_med = df[df["Carrinho de Parada"] == CARRINHO_SIM] if not df.empty else df
+car_mat = df_mat[df_mat["Carrinho de Parada"] == CARRINHO_SIM] if not df_mat.empty else df_mat
+car_urgentes = sum(int(c["Status"].isin([STATUS_VENCIDO, STATUS_CRITICO]).sum()) for c in (car_med, car_mat) if not c.empty)
+car_total = len(car_med) + len(car_mat)
+car_validade = {
+    st_: sum(int((c["Status"] == st_).sum()) for c in (car_med, car_mat) if not c.empty)
+    for st_ in (STATUS_VENCIDO, STATUS_CRITICO, STATUS_ATENCAO, STATUS_PROXIMO, STATUS_OK)
+}
+if not car_total:
+    car_detalhe = "Nenhum lote marcado no carrinho"
+elif car_urgentes:
+    car_detalhe = (f'{len(car_med)} medicamento(s) · {len(car_mat)} material(is) · '
+                   f'<b class="hm-red">{car_urgentes} vencido(s)/crítico(s)</b>')
+else:
+    car_detalhe = f"{len(car_med)} medicamento(s) · {len(car_mat)} material(is) · nenhum vencido/crítico"
+st.html(
+    '<div class="hm-kpis">'
+    + kpi_card("pill", "#3B82F6", "Medicamentos", total_med,
+               f'{kpis.get("quantidade_total", 0)} unidade(s) em estoque',
+               href=page_link("pages/estoque.py"), rotulo_link="Abrir estoque de medicamentos")
+    + kpi_card("package", "#10B981", "Materiais", total_mat,
+               f'{kpis_m.get("ok", 0)} lote(s) com validade segura',
+               href=page_link("pages/estoque_materiais.py"), rotulo_link="Abrir estoque de materiais")
+    + kpi_card("syringe", "#8B5CF6", "Aplicações hoje", kpis.get("aplicacoes_hoje", 0),
+               f"Registradas no dia · {sum(serie)} nos últimos {_DIAS_SPARK} dias",
+               href=page_link("pages/registrar_aplicacao.py"), rotulo_link="Registrar aplicação",
+               grafico=sparkbars(serie, rotulos) if any(serie) else "")
+    + kpi_card("bell", "#EF4444", "Alertas ativos", len(alertas),
+               f'<b class="hm-red">{por_status[STATUS_CRITICO]} crítico(s)</b> · '
+               f'<b class="hm-red">{por_status[STATUS_VENCIDO]} vencido(s)</b>',
+               href="#central-alertas", rotulo_link="Ir para a Central de alertas")
+    + kpi_card("heart-pulse", "#F43F5E", "Carrinho de Parada", car_total, car_detalhe,
+               href=page_link("pages/estoque.py", carrinho="1"), rotulo_link="Ver itens do Carrinho de Parada no estoque")
+    + "</div>"
+)
+
+# ── Situação de validade + Alertas recentes ──────────────────────────────────
+if alertas:
+    recentes = "".join(recent_alert(a) for a in alertas[:_ALERTAS_RECENTES])
+else:
+    recentes = empty_state("check", "#22C55E", "Nenhum alerta de validade",
+                           "Nenhum alerta de validade encontrado no momento.")
+ver_todos = (
+    f'<a class="hm-link-inline" href="#central-alertas">Ver todos {icon("arrow", 14)}</a>' if alertas else ""
+)
+st.html(
+    '<div class="hm-row hm-row-validade">'
+    '<div class="hm-card-section">'
+    + section_header("calendar-clock", "Situação de validade", "Distribuição dos lotes por faixa de vencimento")
+    + '<div class="hm-panels">'
+    + validity_panel("Medicamentos", "pill", contagens_validade(kpis))
+    + validity_panel("Materiais", "package", contagens_validade(kpis_m))
+    + validity_panel("Carrinho de Parada", "heart-pulse", car_validade)
+    + "</div></div>"
+    '<div class="hm-card-section hm-recents">'
+    + section_header("bell", "Alertas recentes", "", ver_todos)
+    + f'<div class="hm-recent-list">{recentes}</div></div>'
+    "</div>"
+)
+
+# ── Central de alertas + Ações rápidas ───────────────────────────────────────
+contadores = "".join(
+    f'<span class="hm-count" style="--c:{sev(s)["cor"]}">{por_status[s]} {sev(s)["rotulo"]}</span>'
+    for s in ORDEM_ALERTA
+)
+if alertas:
+    corpo_central = alerts_table(alertas)
+else:
+    corpo_central = empty_state("check", "#22C55E", "Nenhum alerta de validade",
+                                "Todos os lotes estão com mais de 120 dias de validade.")
+acoes = "".join((
+    quick_action("syringe", "Registrar aplicação", page_link("pages/registrar_aplicacao.py"), "#2563EB"),
+    quick_action("boxes", "Consultar estoque", page_link("pages/estoque.py"), "#06B6D4"),
+    quick_action("plus", "Novo medicamento", page_link("pages/cadastrar_medicamento.py"), "#8B5CF6"),
+    quick_action("plus", "Novo material", page_link("pages/cadastrar_material.py"), "#10B981"),
+))
+st.html(
+    '<div class="hm-row hm-row-central">'
+    '<div class="hm-card-section" id="central-alertas">'
+    + section_header("bell", "Central de alertas",
+                     "Lotes vencidos ou próximos do vencimento, do mais urgente ao menos urgente",
+                     f'<div class="hm-counts">{contadores}</div>')
+    + corpo_central
+    + "</div>"
+    '<div class="hm-card-section hm-quick-section">'
+    + section_header("activity", "Ações rápidas", "Acesso direto às principais funcionalidades")
+    + f'<div class="hm-quick-grid">{acoes}</div></div>'
+    "</div>"
+)
+
+# ── Últimos medicamentos ──────────────────────────────────────────────────────
+st.html(
+    '<div class="hm-card-section">'
+    + section_header("table", "Últimos medicamentos cadastrados", "Os 15 lotes mais recentes do estoque",
+                     f'<a class="hm-link" href="{page_link("pages/estoque.py")}" target="_self">Ver estoque completo '
+                     + icon("arrow", 15) + "</a>")
+    + (empty_state("pill", "#3B82F6", "Nenhum medicamento cadastrado", "Cadastre o primeiro lote em Medicamentos.")
+       if df.empty else tabela_ultimos(df.tail(15).iloc[::-1]))
+    + "</div>"
+)
+
+# ── Rodapé ────────────────────────────────────────────────────────────────────
+st.html(
+    '<footer class="hm-footer">'
+    '<span class="hm-footer-quote">“Tecnologia a serviço da vida.”<i></i></span>'
+    f'<span class="hm-online" style="--c:{sync[0]}"><i></i>{e(sync[1])}</span>'
+    f"<span>Atualizado em <b>{e(agora)}</b></span>"
+    f'<span class="hm-footer-brand">{e(config.clinic_name)} | Controle de Enfermagem</span>'
+    "</footer>"
+)

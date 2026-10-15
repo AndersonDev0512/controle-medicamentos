@@ -14,7 +14,7 @@ from utils.constants import (
     COLUNAS_MATERIAIS,
     COLUNAS_REGISTRO,
 )
-from utils.helpers import formatar_data_hora, sanitize_service_account
+from utils.helpers import carrinho_sn, formatar_data_hora, sanitize_service_account
 import traceback
 import re
 import unicodedata
@@ -34,7 +34,9 @@ _SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.readonly",
 ]
-_CACHE_TTL_SECONDS = int(os.environ.get("SHEETS_CACHE_TTL_SECONDS", "45"))
+# Toda gravação feita pelo app limpa o cache da aba (ler_*.clear()); o TTL só cobre
+# edições feitas direto na planilha.
+_CACHE_TTL_SECONDS = int(os.environ.get("SHEETS_CACHE_TTL_SECONDS", "300"))
 _LOGGER = logging.getLogger(__name__)
 _API_METRICS = {
     "requests": 0,
@@ -242,6 +244,11 @@ if _GSPREAD_AVAILABLE:
             "observacoes": "Observações",
             "observacoes opcional": "Observações",
             "quantidade fechada": "Quantidade Fechada",
+            "carrinho de parada": "Carrinho de Parada",
+            "carrinho parada": "Carrinho de Parada",
+            "carinho de parada": "Carrinho de Parada",
+            "carrinho de parada s ou n": "Carrinho de Parada",
+            "carrinho de parada s n": "Carrinho de Parada",
         }
 
         if "inser" in text and ("data" in text or "dia" in text):
@@ -356,6 +363,7 @@ if _GSPREAD_AVAILABLE:
 
             df = pd.DataFrame(records)
             df = _ensure_cols(df, COLUNAS_ESTOQUE)
+            df["Carrinho de Parada"] = df["Carrinho de Parada"].map(carrinho_sn)
             df['_sheet_row'] = sheet_rows
             return df
         except Exception:
@@ -390,6 +398,11 @@ if _GSPREAD_AVAILABLE:
                     "observacoes": "Observação",
                     "usuario que registrou": "Usuário que Registrou",
                     "data de insercao": "Data de Inserção",
+                    "carrinho de parada": "Carrinho de Parada",
+                    "carrinho parada": "Carrinho de Parada",
+                    "carinho de parada": "Carrinho de Parada",
+                    "carrinho de parada s ou n": "Carrinho de Parada",
+                    "carrinho de parada s n": "Carrinho de Parada",
                 }
                 return aliases.get(normalized, str(header).strip())
 
@@ -411,6 +424,7 @@ if _GSPREAD_AVAILABLE:
 
             dataframe = pd.DataFrame(records) if records else pd.DataFrame(columns=COLUNAS_MATERIAIS)
             dataframe = _ensure_cols(dataframe, COLUNAS_MATERIAIS)
+            dataframe["Carrinho de Parada"] = dataframe["Carrinho de Parada"].map(carrinho_sn)
             if records:
                 dataframe["_sheet_row"] = sheet_rows
             return dataframe
@@ -526,6 +540,9 @@ if _GSPREAD_AVAILABLE:
 
             col_map: dict[int, str] = {}
             for idx, h in enumerate(headers):
+                if _canonical_estoque_column(h) == "Carrinho de Parada":
+                    col_map[idx] = "Carrinho de Parada"
+                    continue
                 h_toks = _tokens(h)
                 if 'p' in h_toks and 'para' not in h_toks:
                     h_toks = h_toks | {'para'}
@@ -566,7 +583,9 @@ if _GSPREAD_AVAILABLE:
             target = last_data_row + 1
 
             # Build row aligned to headers; leave Dias/Status empty so sheet formulas handle them.
-            ncols = max(len(headers), len(COLUNAS_ESTOQUE))
+            # Tamanho dos cabeçalhos reais: colunas conhecidas que a aba não tem ficariam vazias
+            # e uma linha mais larga que a grade falha no insert_row.
+            ncols = len(headers) or len(COLUNAS_ESTOQUE)
             new_row = [''] * ncols
             for idx in range(ncols):
                 canon = col_map.get(idx)
@@ -666,7 +685,12 @@ if _GSPREAD_AVAILABLE:
             stop = {'de', 'da', 'do', 'dos', 'das', 'o', 'a', 'e'}
             cell_updates: list[dict] = []
             for col_idx, h in enumerate(headers, start=1):
-                if _canonical_estoque_column(h) in skip:
+                direto = _canonical_estoque_column(h)
+                if direto in skip:
+                    continue
+                if direto == "Carrinho de Parada":
+                    if direto in dados:
+                        cell_updates.append({'range': f'{_column_letter(col_idx)}{sheet_row}', 'values': [[dados[direto]]]})
                     continue
                 h_toks = _toks(h)
                 for canon in COLUNAS_ESTOQUE:
@@ -674,7 +698,10 @@ if _GSPREAD_AVAILABLE:
                         continue
                     c_toks = _toks(canon) - stop
                     if c_toks and c_toks <= h_toks:
-                        cell_updates.append({'range': f'{chr(64 + col_idx)}{sheet_row}', 'values': [[dados.get(canon, '')]]})
+                        # Só colunas presentes em `dados`: antes, campos fora do formulário
+                        # (ex.: Fracionamento JSON) eram sobrescritos com vazio.
+                        if canon in dados:
+                            cell_updates.append({'range': f'{_column_letter(col_idx)}{sheet_row}', 'values': [[dados[canon]]]})
                         break
 
             if cell_updates:
@@ -796,6 +823,9 @@ if _GSPREAD_AVAILABLE:
 
             col_map: dict[int, str] = {}
             for idx, h in enumerate(headers):
+                if _canonical_estoque_column(h) == "Carrinho de Parada":
+                    col_map[idx] = "Carrinho de Parada"
+                    continue
                 h_toks = _tokens(h)
                 if 'p' in h_toks and 'para' not in h_toks:
                     h_toks = h_toks | {'para'}
@@ -833,7 +863,7 @@ if _GSPREAD_AVAILABLE:
                             break
 
             target = last_data_row + 1
-            ncols = max(len(headers), len(COLUNAS_MATERIAIS))
+            ncols = len(headers) or len(COLUNAS_MATERIAIS)
             new_row = [''] * ncols
             for idx in range(ncols):
                 canon = col_map.get(idx)
@@ -924,13 +954,19 @@ if _GSPREAD_AVAILABLE:
             stop = {'de', 'da', 'do', 'dos', 'das', 'o', 'a', 'e'}
             cell_updates: list[dict] = []
             for col_idx, h in enumerate(headers, start=1):
+                if _canonical_estoque_column(h) == "Carrinho de Parada":
+                    if "Carrinho de Parada" in dados:
+                        cell_updates.append({'range': f'{_column_letter(col_idx)}{sheet_row}', 'values': [[dados["Carrinho de Parada"]]]})
+                    continue
                 h_toks = _toks(h)
                 for canon in COLUNAS_MATERIAIS:
                     if canon in skip:
                         continue
                     c_toks = _toks(canon) - stop
                     if c_toks and c_toks <= h_toks:
-                        cell_updates.append({'range': f'{chr(64 + col_idx)}{sheet_row}', 'values': [[dados.get(canon, '')]]})
+                        # Só colunas presentes em `dados` (não apaga o que não foi enviado)
+                        if canon in dados:
+                            cell_updates.append({'range': f'{_column_letter(col_idx)}{sheet_row}', 'values': [[dados[canon]]]})
                         break
             if cell_updates:
                 ws.batch_update(cell_updates, value_input_option='USER_ENTERED')

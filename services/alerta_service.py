@@ -2,8 +2,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 from services.estoque_service import get_estoque
-from utils.constants import STATUS_VENCIDO, STATUS_ATENCAO, STATUS_PROXIMO, STATUS_OK, CORES_STATUS
-from utils.helpers import safe_int
+from services.sheets_service import ler_materiais
+from utils.constants import STATUS_VENCIDO, STATUS_CRITICO, STATUS_ATENCAO, STATUS_PROXIMO, STATUS_OK, CORES_STATUS
+from utils.helpers import safe_int, calcular_dias_para_vencer, calcular_status
 
 
 @dataclass
@@ -15,6 +16,8 @@ class Alerta:
     dias_para_vencer: Optional[int]
     status: str
     cor: str
+    tipo: str = "Medicamento"
+    unidade: str = ""
 
 
 def get_alertas() -> list[Alerta]:
@@ -35,17 +38,52 @@ def get_alertas() -> list[Alerta]:
                 dias_para_vencer=int(dias) if dias is not None else None,
                 status=status,
                 cor=CORES_STATUS.get(status, "#6b7280"),
+                unidade=str(row.get("Unidade de Medida", "") or ""),
             )
         )
 
-    _ordem = {STATUS_VENCIDO: 0, STATUS_ATENCAO: 1, STATUS_PROXIMO: 2}
-    alertas.sort(
-        key=lambda a: (
-            _ordem.get(a.status, 3),
-            a.dias_para_vencer if a.dias_para_vencer is not None else 9999,
+    return ordenar_alertas(alertas)
+
+
+def get_alertas_materiais() -> list[Alerta]:
+    df = ler_materiais()
+    alertas: list[Alerta] = []
+    if df.empty:
+        return alertas
+
+    for _, row in df.iterrows():
+        dias = calcular_dias_para_vencer(row.get("Data de Vencimento"))
+        status = calcular_status(dias)
+        if status == STATUS_OK:
+            continue
+        alertas.append(
+            Alerta(
+                medicamento=str(row.get("Material", "")),
+                lote=str(row.get("Lote", "")),
+                quantidade=safe_int(row.get("Quantidade", 0)),
+                data_vencimento=str(row.get("Data de Vencimento", "")),
+                dias_para_vencer=dias,
+                status=status,
+                cor=CORES_STATUS.get(status, "#6b7280"),
+                tipo="Material",
+                unidade=str(row.get("Unidade de Medida", "") or ""),
+            )
         )
+
+    return ordenar_alertas(alertas)
+
+
+_ORDEM_STATUS = {STATUS_VENCIDO: 0, STATUS_CRITICO: 1, STATUS_ATENCAO: 2, STATUS_PROXIMO: 3}
+
+
+def ordenar_alertas(alertas: list[Alerta]) -> list[Alerta]:
+    return sorted(
+        alertas,
+        key=lambda a: (
+            _ORDEM_STATUS.get(a.status, 4),
+            a.dias_para_vencer if a.dias_para_vencer is not None else 9999,
+        ),
     )
-    return alertas
 
 
 # ── Skeleton for future notification channels ──────────────────────────────────
