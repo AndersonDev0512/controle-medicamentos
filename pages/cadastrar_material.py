@@ -1,4 +1,5 @@
 import streamlit as st
+from utils.avisos import agendar_aviso, mostrar_aviso, mostrar_aviso_pendente
 from utils.helpers import render_responsive_table
 from datetime import date, datetime
 from services.estoque_service import (
@@ -12,16 +13,9 @@ from utils.helpers import carrinho_sn, formatar_data_hora, normalizar_texto
 from utils.constants import CARRINHO_NAO, CARRINHO_SIM
 
 
-def mostrar_toast_pendente():
-    mensagem = st.session_state.pop("toast_mensagem", None)
-    if mensagem:
-        texto, icone = mensagem
-        st.toast(texto, icon=icone)
-
-
 st.markdown('<h1 class="page-title">🧴 Materiais</h1>', unsafe_allow_html=True)
 
-mostrar_toast_pendente()
+mostrar_aviso_pendente()
 
 tab_cad, tab_edit, tab_del, tab_cons = st.tabs(["📝 Cadastrar", "✏️ Editar", "🗑️ Excluir", "🔎 Consultar"])
 
@@ -56,10 +50,10 @@ with tab_cad:
                             if nu not in lst:
                                 lst.append(nu)
                                 st.session_state['custom_material_units'] = lst
-                                st.success(f"Unidade '{nu}' adicionada (sessão).")
+                                agendar_aviso(f"Unidade '{nu}' adicionada.")
                                 st.rerun()
                         else:
-                            st.error('Digite a unidade antes de adicionar.')
+                            mostrar_aviso("Digite a unidade antes de adicionar.", "erro")
             with c2:
                 st.text_input("Lote *", key=f"mat_lote_{row_id}")
                 st.date_input("Data de Vencimento *", value=date.today(), format="DD/MM/YYYY", key=f"mat_val_{row_id}")
@@ -111,8 +105,7 @@ with tab_cad:
                 })
 
         if erros:
-            for e in erros:
-                st.error(e)
+            mostrar_aviso(erros, "erro")
         elif registros:
             sucesso = sum(1 for d in registros if adicionar_material(d))
             get_materiais.clear()
@@ -187,7 +180,7 @@ with tab_edit:
 
         if btn_edit:
             if not usuario_auditoria.strip() or not justificativa.strip():
-                st.error("Usuário responsável e justificativa são obrigatórios.")
+                mostrar_aviso("Usuário responsável e justificativa são obrigatórios.", "erro")
             else:
                 e_unidade = e_unidade_manual.strip() if e_unidade_sel == "✏️ Inserir Manualmente" else e_unidade_sel
                 dados = {
@@ -301,11 +294,11 @@ with tab_del:
             key="btn_del_mat_selecionados",
         ):
             if selecionados.empty:
-                st.error("Selecione pelo menos um material na tabela.")
+                mostrar_aviso("Selecione pelo menos um material na tabela.", "erro")
             elif not usuario_del.strip():
-                st.error("Informe o usuário responsável.")
+                mostrar_aviso("Informe o usuário responsável.", "erro")
             elif not justificativa_del.strip():
-                st.error("A justificativa é obrigatória.")
+                mostrar_aviso("A justificativa é obrigatória.", "erro")
             else:
                 excluidos = 0
                 falhas = 0

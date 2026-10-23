@@ -2029,6 +2029,88 @@ p, span, div, label, li {
 
 .hm-link:hover, .hm-link-inline:hover { color: #FFFFFF !important; }
 
+/* ── AVISOS (pop-up central, utils/avisos.py) ─────────── */
+div[role="dialog"]:has(.av-box) {
+    border: 1px solid var(--glass-border-strong) !important;
+    border-radius: 20px !important;
+    background: linear-gradient(170deg, #10244B 0%, #0A1834 100%) !important;
+    box-shadow: 0 30px 80px rgba(2, 6, 23, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.03) inset !important;
+    animation: av-pop 0.38s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+}
+
+div[role="dialog"]:has(.av-box) h2,
+div[role="dialog"]:has(.av-box) [data-testid="stHeading"] { justify-content: center; text-align: center; }
+
+.av-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.9rem;
+    padding: 0.3rem 0 0.4rem;
+    text-align: center;
+}
+
+.av-icon {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--c) 16%, transparent);
+    color: var(--c) !important;
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--c) 7%, transparent), 0 0 34px color-mix(in srgb, var(--c) 45%, transparent);
+    animation: av-icon 0.55s cubic-bezier(0.2, 1.4, 0.4, 1) 0.1s both;
+}
+
+.av-icon::after {
+    content: "";
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    border: 2px solid var(--c);
+    opacity: 0;
+    animation: av-ring 1.1s ease-out 0.35s;
+}
+
+.av-erro .av-icon .ui-ico { animation: av-shake 0.5s ease 0.5s; }
+
+.av-box p { margin: 0 !important; color: #E2E8F0 !important; font-size: 1rem; line-height: 1.5; }
+.av-box ul {
+    margin: 0 !important;
+    padding: 0.75rem 1rem 0.75rem 2rem !important;
+    width: 100%;
+    text-align: left;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--c) 9%, transparent);
+    border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
+}
+.av-box li { color: #E2E8F0 !important; font-size: 0.9rem; margin: 0.15rem 0; }
+
+@keyframes av-pop {
+    from { opacity: 0; transform: translateY(14px) scale(0.94); }
+    to   { opacity: 1; transform: none; }
+}
+@keyframes av-icon {
+    from { opacity: 0; transform: scale(0.3) rotate(-25deg); }
+    to   { opacity: 1; transform: none; }
+}
+@keyframes av-ring {
+    0%   { opacity: 0.8; transform: scale(0.85); }
+    100% { opacity: 0; transform: scale(1.35); }
+}
+@keyframes av-shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-5px); }
+    40% { transform: translateX(5px); }
+    60% { transform: translateX(-3px); }
+    80% { transform: translateX(3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    div[role="dialog"]:has(.av-box), .av-icon, .av-icon::after, .av-erro .av-icon .ui-ico { animation: none; }
+}
+
 /* ── RESUMO DO ESTOQUE FILTRADO (utils/components.py:stock_summary) ── */
 .st-summary {
     display: grid;
@@ -2465,3 +2547,7 @@ p, span, div, label, li {
     border-color: #3B82F6 !important;
     box-shadow: 0 6px 16px rgba(37, 99, 235, 0.38) !important;
 }
+
+/* Login: componente invisível que lê/grava o cookie (utils/auth.py) */
+.st-key-cm_auth_cookie { display: none !important; }
+.cm-auth-wait { margin-top: 30vh; text-align: center; color: #94A3B8 !important; }

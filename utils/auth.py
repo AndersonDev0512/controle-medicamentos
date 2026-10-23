@@ -2,8 +2,12 @@
 
 A sessão do Streamlit zera a cada recarga, aba nova ou clique na barra de navegação
 (os links recarregam a página). Por isso, depois do login, gravamos no navegador um
-cookie assinado com HMAC e com validade; cada sessão nova lê esse cookie em
-``st.context.cookies`` e entra sem pedir a senha de novo.
+cookie assinado com HMAC e com validade; cada sessão nova lê esse cookie e entra sem
+pedir a senha de novo.
+
+O cookie é lido de dois jeitos: ``st.context.cookies`` (rodando local) e um componente
+que lê ``document.cookie`` no navegador e devolve o valor ao Python. O segundo é o que
+funciona no Streamlit Community Cloud, que filtra os cookies antes de chegarem ao app.
 
 Configuração em ``.streamlit/secrets.toml``:
     APP_PASSWORD = "senha da equipe"     # sem ela, o login fica desativado
@@ -20,7 +24,6 @@ import os
 import time
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 COOKIE = "cm_auth"
 _SESSAO_OK = "cm_auth_ok"
@@ -78,24 +81,39 @@ def _cookie_atual() -> str | None:
         return None
 
 
-def _gravar_cookie(valor: str, max_age: int) -> None:
-    # O iframe do componente tem allow-same-origin, então o cookie vale para o app.
-    components.html(
-        "<script>window.parent.document.cookie = "
-        f"'{COOKIE}={valor}; path=/; max-age={max_age}; SameSite=Lax';</script>",
-        height=0,
-    )
+# Componente sem visual (escondido em style.css por .st-key-cm_auth_cookie). Roda na
+# página do app: grava ou apaga o cookie quando pedido e devolve o valor atual em ``token``.
+_COOKIE_JS = """
+export default function ({ data, setStateValue }) {
+    const pedido = data || {};
+    if (typeof pedido.valor === "string") {
+        const seguro = location.protocol === "https:" ? "; Secure" : "";
+        document.cookie = `%(nome)s=${pedido.valor}; path=/; max-age=${pedido.max_age}; SameSite=Lax${seguro}`;
+    }
+    const achado = document.cookie.split("; ").find((c) => c.startsWith("%(nome)s="));
+    setStateValue("token", achado ? achado.slice(%(tam)d) : "");
+}
+""" % {"nome": COOKIE, "tam": len(COOKIE) + 1}
+_cookie_navegador = st.components.v2.component("cm_auth_cookie", js=_COOKIE_JS)
+
+
+def _cookie_no_navegador(valor: str | None = None, max_age: int = 0) -> str | None:
+    """Monta o componente (gravando ``valor`` se informado) e devolve o cookie lido no
+    navegador. Devolve None na primeira execução, antes de o navegador responder."""
+    pedido = {} if valor is None else {"valor": valor, "max_age": max_age}
+    return _cookie_navegador(data=pedido, key="cm_auth_cookie", on_token_change=lambda: None).token
+
+
+def _entrar(token: str) -> None:
+    st.session_state[_SESSAO_OK] = True
+    st.session_state[_SESSAO_SAIU] = False
+    st.session_state["cm_auth_token"] = token
 
 
 def autenticado() -> bool:
     if not _senha_configurada():
         return True
-    if st.session_state.get(_SESSAO_OK):
-        return True
-    if not st.session_state.get(_SESSAO_SAIU) and _token_valido(_cookie_atual()):
-        st.session_state[_SESSAO_OK] = True
-        return True
-    return False
+    return bool(st.session_state.get(_SESSAO_OK))
 
 
 def sair() -> None:
@@ -138,9 +156,7 @@ def _tela_login() -> None:
         entrar = st.form_submit_button("Entrar", type="primary", use_container_width=True)
     if entrar:
         if hmac.compare_digest(senha.encode(), _senha_configurada().encode()):
-            st.session_state[_SESSAO_OK] = True
-            st.session_state[_SESSAO_SAIU] = False
-            st.session_state["cm_auth_token"] = _gerar_token()
+            _entrar(_gerar_token())
             st.rerun()
         time.sleep(1)  # freia tentativas em sequência
         st.error("Senha incorreta.")
@@ -152,15 +168,25 @@ def exigir_login() -> None:
         sair()
         del st.query_params["logout"]
 
-    if st.session_state.get(_SESSAO_SAIU) and _cookie_atual():
-        _gravar_cookie("", 0)
-
-    if autenticado():
-        token = st.session_state.get("cm_auth_token")
-        # Grava o cookie até a próxima sessão já chegar com ele.
-        if token and _cookie_atual() != token:
-            _gravar_cookie(token, _validade_segundos())
+    if not _senha_configurada():
         return
+
+    if st.session_state.get(_SESSAO_SAIU):
+        _cookie_no_navegador("", 0)  # apaga o cookie
+    elif autenticado():
+        # Mantém o cookie gravado para as próximas sessões (recarga, aba nova, navegação).
+        _cookie_no_navegador(st.session_state.get("cm_auth_token", ""), _validade_segundos())
+        return
+    else:
+        no_navegador = _cookie_no_navegador()
+        for token in (_cookie_atual(), no_navegador):
+            if _token_valido(token):
+                _entrar(token)
+                return
+        if no_navegador is None and not _cookie_atual():
+            # No Cloud o cookie só chega pelo componente, que responde com um rerun.
+            st.markdown('<p class="cm-auth-wait">Verificando acesso…</p>', unsafe_allow_html=True)
+            st.stop()
 
     _tela_login()
     st.stop()

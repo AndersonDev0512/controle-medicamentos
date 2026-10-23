@@ -285,6 +285,16 @@ def notification_drawer(alertas: list[Alerta]) -> str:
     )
 
 
+def report_shortcut(nome_icone: str, titulo: str, descricao: str, href: str, cor: str) -> str:
+    """Atalho de relatório nas Ações rápidas; ``href`` abre pages/historico.py já com o relatório gerado."""
+    return (
+        f'<a class="hm-report" href="{e(href)}" target="_self" style="--c:{cor}">'
+        f'<span class="hm-report-icon">{icon(nome_icone, 18)}</span>'
+        f"<span class=\"hm-report-text\"><b>{e(titulo)}</b><small>{e(descricao)}</small></span>"
+        f'{icon("arrow", 14)}</a>'
+    )
+
+
 def cart_kpi(df, item: str) -> str:
     """KPI do Carrinho de Parada para um DataFrame de estoque (medicamentos ou materiais).
 

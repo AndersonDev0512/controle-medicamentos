@@ -1,4 +1,5 @@
 import streamlit as st
+from utils.avisos import agendar_aviso, mostrar_aviso, mostrar_aviso_pendente
 import pandas as pd
 from datetime import date, datetime
 from services.estoque_service import (
@@ -24,16 +25,9 @@ from utils.helpers import (
 from utils.constants import CARRINHO_NAO, CARRINHO_SIM, UNIDADES_FRACIONADAS
 
 
-def mostrar_toast_pendente():
-    mensagem = st.session_state.pop("toast_mensagem", None)
-    if mensagem:
-        texto, icone = mensagem
-        st.toast(texto, icon=icone)
-
-
 st.markdown('<h1 class="page-title">➕  Medicamentos</h1>', unsafe_allow_html=True)
 
-mostrar_toast_pendente()
+mostrar_aviso_pendente()
 
 tab_cad, tab_edit, tab_del, tab_cons = st.tabs(["📝 Cadastrar", "✏️ Editar", "🗑️ Excluir", "🔎 Consultar"])
 
@@ -113,7 +107,7 @@ with tab_cad:
                         nova_unidade = nova_unidade.strip()
 
                         if not nova_unidade:
-                            st.error("Digite a unidade antes de adicionar.")
+                            mostrar_aviso("Digite a unidade antes de adicionar.", "erro")
                         else:
                             unidades_customizadas = st.session_state.get(
                                 "custom_units",
@@ -126,9 +120,7 @@ with tab_cad:
                                     unidades_customizadas
                                 )
 
-                            st.success(
-                                f"Unidade '{nova_unidade}' adicionada."
-                            )
+                            agendar_aviso(f"Unidade '{nova_unidade}' adicionada.")
                             st.rerun()
 
                 unidade_fracionada = st.selectbox(
@@ -358,8 +350,7 @@ with tab_cad:
             )
 
         if erros:
-            for erro in erros:
-                st.error(erro)
+            mostrar_aviso(erros, "erro")
 
         elif registros:
             sucessos = sum(
@@ -476,7 +467,7 @@ with tab_edit:
 
         if btn_edit:
             if not usuario.strip() or not justificativa.strip():
-                st.error("Usuário responsável e justificativa são obrigatórios.")
+                mostrar_aviso("Usuário responsável e justificativa são obrigatórios.", "erro")
             else:
                 e_unidade = e_unidade_manual.strip() if e_unidade_sel == "✏️ Inserir Manualmente" else e_unidade_sel
                 dados = {
@@ -598,11 +589,11 @@ with tab_del:
             key="btn_del_selecionados",
         ):
             if selecionados.empty:
-                st.error("Selecione pelo menos um medicamento na tabela.")
+                mostrar_aviso("Selecione pelo menos um medicamento na tabela.", "erro")
             elif not usuario_del.strip():
-                st.error("Informe o usuário responsável.")
+                mostrar_aviso("Informe o usuário responsável.", "erro")
             elif not justificativa_del.strip():
-                st.error("A justificativa é obrigatória.")
+                mostrar_aviso("A justificativa é obrigatória.", "erro")
             else:
                 excluidos = 0
                 falhas = 0

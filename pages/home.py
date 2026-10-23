@@ -21,6 +21,7 @@ from utils.components import (
     prazo_texto,
     quick_action,
     recent_alert,
+    report_shortcut,
     section_header,
     sev,
     sparkbars,
@@ -222,6 +223,22 @@ acoes = "".join((
     quick_action("plus", "Novo medicamento", page_link("pages/cadastrar_medicamento.py"), "#8B5CF6"),
     quick_action("plus", "Novo material", page_link("pages/cadastrar_material.py"), "#10B981"),
 ))
+_hoje = date.today()
+_rel = "pages/historico.py"
+relatorios = "".join((
+    report_shortcut("calendar", "Aplicações do mês", f"{_hoje.replace(day=1):%d/%m} a {_hoje:%d/%m}",
+                    page_link(_rel, rel="aplicacoes", periodo="mes"), "#3B82F6"),
+    report_shortcut("clock", "Aplicações da semana", "Últimos 7 dias",
+                    page_link(_rel, rel="aplicacoes", periodo="semana"), "#06B6D4"),
+    report_shortcut("pill", "Estoque de medicamentos", "Inventário completo em PDF",
+                    page_link(_rel, rel="estoque", inv="medicamentos"), "#8B5CF6"),
+    report_shortcut("package", "Estoque de materiais", "Inventário completo em PDF",
+                    page_link(_rel, rel="estoque", inv="materiais"), "#10B981"),
+    report_shortcut("x-circle", "Lotes vencidos", "Medicamentos para descarte",
+                    page_link(_rel, rel="estoque", inv="medicamentos", status=STATUS_VENCIDO), "#EF4444"),
+    report_shortcut("report", "Relatório personalizado", "Escolha período, filtros e campos",
+                    page_link(_rel), "#F59E0B"),
+))
 st.html(
     '<div class="hm-row hm-row-central">'
     '<div class="hm-card-section" id="central-alertas">'
@@ -232,7 +249,9 @@ st.html(
     + "</div>"
     '<div class="hm-card-section hm-quick-section">'
     + section_header("activity", "Ações rápidas", "Acesso direto às principais funcionalidades")
-    + f'<div class="hm-quick-grid">{acoes}</div></div>'
+    + f'<div class="hm-quick-grid">{acoes}</div>'
+    + f'<div class="hm-reports"><span class="hm-reports-title">{icon("file-chart", 15)}Relatórios</span>'
+    + f'<div class="hm-reports-grid">{relatorios}</div></div></div>'
     "</div>"
 )
 

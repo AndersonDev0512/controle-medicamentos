@@ -222,6 +222,22 @@ st.caption("Gere relatórios prontos ou personalizados a partir das movimentaç�
 df = ler_historico()
 df_registros = ler_registro_diario()
 
+# Atalhos da Página Inicial (Ações rápidas > Relatórios) chegam por ?rel=...; valem uma vez.
+_atalho = st.query_params.get("rel", "")
+_auto_aplicacoes = _auto_estoque = False
+if _atalho == "aplicacoes":
+    _dias = {"semana": 6}.get(st.query_params.get("periodo", ""))
+    _fim = date.today()
+    st.session_state["rel_inicio"] = _fim - timedelta(days=_dias) if _dias else _fim.replace(day=1)
+    st.session_state["rel_fim"] = _fim
+    _auto_aplicacoes = True
+elif _atalho == "estoque":
+    st.session_state["relatorio_estoque_tipo"] = "Materiais" if st.query_params.get("inv") == "materiais" else "Medicamentos"
+    st.session_state["_rel_status_atalho"] = st.query_params.get("status", "Todos")
+    _auto_estoque = True
+for _param in ("rel", "periodo", "inv", "status"):
+    st.query_params.pop(_param, None)
+
 st.markdown('<div class="section-header">Relatório Personalizado — Aplicações</div>', unsafe_allow_html=True)
 st.caption("Relatório fechado de aplicações por intervalo de datas.")
 with st.form("form_relatorio_personalizado"):
@@ -233,13 +249,15 @@ with st.form("form_relatorio_personalizado"):
     ).dropna()
     data_inicial_padrao = datas_aplicacoes.min().date() if not datas_aplicacoes.empty else date.today()
     data_final_padrao = datas_aplicacoes.max().date() if not datas_aplicacoes.empty else date.today()
+    st.session_state.setdefault("rel_inicio", data_inicial_padrao)
+    st.session_state.setdefault("rel_fim", data_final_padrao)
     with rel_col1:
-        rel_inicio = st.date_input("Data inicial da aplicação", value=data_inicial_padrao, format="DD/MM/YYYY")
+        rel_inicio = st.date_input("Data inicial da aplicação", format="DD/MM/YYYY", key="rel_inicio")
     with rel_col2:
-        rel_fim = st.date_input("Data final da aplicação", value=data_final_padrao, format="DD/MM/YYYY")
+        rel_fim = st.date_input("Data final da aplicação", format="DD/MM/YYYY", key="rel_fim")
     gerar_relatorio = st.form_submit_button("📑 Gerar relatório personalizado", width="stretch")
 
-if gerar_relatorio:
+if gerar_relatorio or _auto_aplicacoes:
     if rel_inicio > rel_fim:
         st.error("A data inicial não pode ser maior que a data final.")
     elif df_registros.empty:
@@ -304,14 +322,26 @@ st.caption("Escolha o tipo de estoque e a situação para gerar um documento pai
 estoque_col1, estoque_col2, estoque_col3 = st.columns([2, 2, 1])
 with estoque_col1:
     tipo_estoque = st.selectbox("Inventário", ["Medicamentos", "Materiais"], key="relatorio_estoque_tipo")
+opcoes_status = ["Todos"] + sorted(
+    (estoque_medicamentos if tipo_estoque == "Medicamentos" else estoque_materiais).get("Status", pd.Series(dtype=str)).dropna().astype(str).unique().tolist()
+)
+_status_atalho = st.session_state.pop("_rel_status_atalho", None)
+if _status_atalho is not None:
+    # Situação pedida pelo atalho; se não houver lote nela, o relatório sai vazio em vez de "Todos".
+    st.session_state["relatorio_estoque_status"] = _status_atalho if _status_atalho in opcoes_status else "Todos"
+    _auto_vazio = _status_atalho not in opcoes_status
+else:
+    _auto_vazio = False
+if st.session_state.get("relatorio_estoque_status") not in opcoes_status:
+    st.session_state.pop("relatorio_estoque_status", None)
 with estoque_col2:
-    status_estoque = st.selectbox("Situação", ["Todos"] + sorted(
-        (estoque_medicamentos if tipo_estoque == "Medicamentos" else estoque_materiais).get("Status", pd.Series(dtype=str)).dropna().astype(str).unique().tolist()
-    ), key="relatorio_estoque_status")
+    status_estoque = st.selectbox("Situação", opcoes_status, key="relatorio_estoque_status")
 with estoque_col3:
     gerar_estoque = st.button("📑 Gerar estoque", width="stretch")
 
-if gerar_estoque:
+if _auto_estoque and _auto_vazio:
+    st.info(f"Nenhum lote de {tipo_estoque.lower()} com situação “{_status_atalho}” no momento.")
+elif gerar_estoque or _auto_estoque:
     estoque_relatorio = (estoque_medicamentos if tipo_estoque == "Medicamentos" else estoque_materiais).copy()
     if status_estoque != "Todos" and "Status" in estoque_relatorio:
         estoque_relatorio = estoque_relatorio[estoque_relatorio["Status"] == status_estoque]
